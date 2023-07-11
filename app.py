@@ -15,8 +15,11 @@ def color_by_ion_type(col):
 
 with st.sidebar:
     st.title('Fragment Ion Calculator')
+    st.markdown("""This app takes an amino acid sequence and calculates the fragment ions for a given charge range. Modifications should be provided in parentheses with the mass in Daltons.""")
+    st.markdown("""For example, (-3.14)PEP(123.456)TIDE contians a -3.14 N-Term modifaction and a 123.456 modifcation on the second Proline.""")
+
     peptide_sequence = st.text_input('Peptide Sequence',
-                                     value='PEP(123.456)TIDE',
+                                     value='(-3.14)PEP(123.456)TIDE',
                                      help='Peptide sequence to fragment. Include modification masses in parentheses.')
 
     min_charge, max_charge = st.slider('Charge Range',
@@ -25,7 +28,7 @@ with st.sidebar:
                                        value=(1, 2),
                                        help='Charge range to fragment')
 
-    mass_type = st.selectbox('Mass Type',
+    mass_type = st.radio('Mass Type',
                              ['monoisotopic', 'average'],
                              help='Mass type to use for fragment calculation')
     is_monoisotopic = mass_type == 'monoisotopic'
@@ -72,7 +75,7 @@ for charge in range(min_charge, max_charge + 1):
     peptide_mass_data[f'+{charge}'] = [calculate_mz(peptide_sequence, charge=charge,
                                                                monoisotopic=is_monoisotopic)]
 mass_df = pd.DataFrame(peptide_mass_data)
-st.subheader('Peptide M/Z')
+st.subheader('Peptide Mass/Charge Table')
 st.table(mass_df)
 
 # Plotting the graph
