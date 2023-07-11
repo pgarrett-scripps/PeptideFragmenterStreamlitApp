@@ -1,6 +1,7 @@
 import pandas as pd
+import peptacular.constants
 import streamlit as st
-from peptacular.sequence import fragment_series, strip_modifications, calculate_mz
+from peptacular.sequence import fragment_series, strip_modifications, calculate_mz, parse_modified_sequence
 import plotly.graph_objects as go
 
 COLOR_DICT = {'a': 'brown', 'b': 'blue', 'c': 'green', 'x': 'orange', 'y': 'red', 'z': 'purple'}
@@ -39,6 +40,23 @@ with st.sidebar:
                                     help='Fragment types to calculate')
 
 st.warning('This is a work in progress. Please report any issues or suggestions to pgarrett@scripps.edu.')
+
+
+unmodified_sequence = strip_modifications(peptide_sequence)
+for aa in unmodified_sequence:
+    if aa not in peptacular.constants.AMINO_ACIDS:
+        st.error(f'Invalid amino acid: {aa}')
+        st.stop()
+
+mod_dict = parse_modified_sequence(peptide_sequence)
+for i, mod in mod_dict.items():
+    # check if mod can be a float
+    try:
+        float(mod)
+    except ValueError:
+        st.error(f'Invalid modification mass: {mod}')
+        st.stop()
+
 
 st.subheader('Fragment Ions')
 data = {'AA': list(strip_modifications(peptide_sequence))}
