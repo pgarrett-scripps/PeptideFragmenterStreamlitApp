@@ -9,7 +9,7 @@ COLOR_DICT = {'a': 'brown', 'b': 'blue', 'c': 'green', 'x': 'orange', 'y': 'red'
 # Function to apply color according to ion type
 def color_by_ion_type(col):
     ion_type = col.name[0]
-    color = COLOR_DICT.get(ion_type, 'black')  # get color or default to black if not found
+    color = COLOR_DICT.get(ion_type, 'grey')  # get color or default to grey if not found
     return ['color: %s' % color] * len(col)
 
 
@@ -94,7 +94,7 @@ df['reverse_ion_num'] = list(range(1, len(df) + 1))[::-1]
 for col in df.columns[1:-4]:  # skip the 'AA' column and the forward/reverse columns
     ion_type = col[0]  # extract ion type from column name
     charge = int(col[1:])  # extract charge from column name
-    color = COLOR_DICT.get(ion_type, 'black')  # get color or default to black if not found
+    color = COLOR_DICT.get(ion_type, 'grey')  # get color or default to grey if not found
 
     if ion_type in 'abc':
         ion_nums = list(range(1, len(df) + 1))
