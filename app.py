@@ -7,13 +7,13 @@ import plotly.graph_objects as go
 from utils import color_by_ion_type, COLOR_DICT
 
 params = st.experimental_get_query_params()
-PEPTIDE_SEQUENCE = params.get('peptide', ['(-3.14)PEP(123.456)TIDE'])[0]
+PEPTIDE_SEQUENCE = params.get('sequence', ['(-3.14)PEP(123.456)TIDE'])[0]
 MIN_CHARGE = int(params.get('min_charge', [1])[0])
 MAX_CHARGE = int(params.get('max_charge', [2])[0])
 MASS_TYPE = params.get('mass_type', ['monoisotopic'])[0]
 FRAGMENT_TYPES = list(params.get('fragment_types', ['by'])[0])
 
-st.set_page_config(page_title="peptidefragmenter")
+st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:")
 
 with st.sidebar:
     st.title('Fragment Ion Calculator')
@@ -60,7 +60,7 @@ for i, mod in mod_dict.items():
         st.stop()
 
 
-st.subheader('Fragment Ions')
+st.subheader('Results')
 data = {'AA': list(unmodified_sequence)}
 for ion_type in fragment_types:
     for charge in range(min_charge, max_charge + 1):
@@ -74,6 +74,7 @@ for ion_type in fragment_types:
 # Displaying the table
 df = pd.DataFrame(data)
 df = df.reindex(sorted(df.columns), axis=1)
+df_downloaded = df.to_csv(index=False)
 styled_df = df.style.apply(color_by_ion_type)
 
 # CSS to inject contained in a string
@@ -89,6 +90,7 @@ st.markdown(hide_table_row_index, unsafe_allow_html=True)
 
 # Display a static table
 st.table(styled_df)
+st.download_button(label='Download CSV', data=df_downloaded, file_name='fragment_ions.csv', use_container_width=True)
 
 peptide_mass_data = {}
 for charge in range(min_charge, max_charge + 1):
@@ -129,9 +131,13 @@ for col in df.columns[1:-4]:  # skip the 'AA' column and the forward/reverse col
                                           f"{row['reverse']}<br>Ion Num: {row['reverse_ion_num']}", axis=1)
         fig.add_trace(go.Bar(x=df[col], y=list(range(-len(df), 0)), orientation='v', marker_color=color, name=col,
                              hovertext=hover_text, hoverinfo='text', ))
-
-fig.update_layout(barmode='group', yaxis_title="Fragment Ion Sequence", xaxis_title="M/Z")
+#make bars wider
+fig.update_traces(width=2)
+fig.update_layout(barmode='group', yaxis_title="Fragment Ion Sequence", xaxis_title="M/Z", title='Fragment Ions')
 fig.update_yaxes(ticktext=y_axis, tickvals=list(range(-len(df), len(df) + 1)))
+#make taller
+fig.update_layout(height=750)
+
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader('Peptide Mass/Charge Table')
