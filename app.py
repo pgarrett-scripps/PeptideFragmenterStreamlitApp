@@ -4,6 +4,9 @@ import streamlit as st
 from peptacular.sequence import fragment_series, strip_modifications, calculate_mz, parse_modified_sequence
 import plotly.graph_objects as go
 
+
+st.set_page_config(page_title="peptidefragmenter")
+
 COLOR_DICT = {'a': 'brown', 'b': 'blue', 'c': 'green', 'x': 'orange', 'y': 'red', 'z': 'purple'}
 
 
