@@ -4,47 +4,46 @@ import streamlit as st
 from peptacular.sequence import fragment_series, strip_modifications, calculate_mz, parse_modified_sequence
 import plotly.graph_objects as go
 
+from utils import color_by_ion_type, COLOR_DICT
+
+params = st.experimental_get_query_params()
+PEPTIDE_SEQUENCE = params.get('peptide', ['(-3.14)PEP(123.456)TIDE'])[0]
+MIN_CHARGE = int(params.get('min_charge', [1])[0])
+MAX_CHARGE = int(params.get('max_charge', [2])[0])
+MASS_TYPE = params.get('mass_type', ['monoisotopic'])[0]
+FRAGMENT_TYPES = list(params.get('fragment_types', ['by'])[0])
 
 st.set_page_config(page_title="peptidefragmenter")
 
-COLOR_DICT = {'a': 'brown', 'b': 'blue', 'c': 'green', 'x': 'orange', 'y': 'red', 'z': 'purple'}
-
-
-# Function to apply color according to ion type
-def color_by_ion_type(col):
-    ion_type = col.name[0]
-    color = COLOR_DICT.get(ion_type, 'grey')  # get color or default to grey if not found
-    return ['color: %s' % color] * len(col)
-
-
 with st.sidebar:
     st.title('Fragment Ion Calculator')
-    st.markdown("""This app takes an amino acid sequence and calculates the fragment ions for a given charge range. Modifications should be provided in parentheses with the mass in Daltons.""")
-    st.markdown("""For example, (-3.14)PEP(123.456)TIDE contians a -3.14 N-Term modifaction and a 123.456 modifcation on the second Proline.""")
+    st.markdown("""This app takes an amino acid sequence and calculates the fragment ions for a given charge range. Modifications should be provided in parentheses with the mass difference in Daltons.""")
+    st.markdown("""For example, (-3.14)PEP(123.456)TIDE contians a -3.14 N-Term modifiction and a 123.456 modifcation on the second Proline (P).""")
 
     peptide_sequence = st.text_input('Peptide Sequence',
-                                     value='(-3.14)PEP(123.456)TIDE',
+                                     value=PEPTIDE_SEQUENCE,
                                      help='Peptide sequence to fragment. Include modification masses in parentheses.')
 
     min_charge, max_charge = st.slider('Charge Range',
                                        min_value=1,
                                        max_value=10,
-                                       value=(1, 2),
+                                       value=(MIN_CHARGE, MAX_CHARGE),
                                        help='Charge range to fragment')
 
     mass_type = st.radio('Mass Type',
                              ['monoisotopic', 'average'],
-                             help='Mass type to use for fragment calculation')
+                             help='Mass type to use for fragment calculation',
+                             index=0 if MASS_TYPE == 'monoisotopic' else 1)
     is_monoisotopic = mass_type == 'monoisotopic'
 
     fragment_types = st.multiselect('Fragment Types',
                                     ['a', 'b', 'c', 'x', 'y', 'z'],
-                                    default=['b', 'y'],
+                                    default=FRAGMENT_TYPES,
                                     help='Fragment types to calculate')
 
 st.warning('This is a work in progress. Please report any issues or suggestions to pgarrett@scripps.edu.')
 
-
+# check if anything is invalid
 unmodified_sequence = strip_modifications(peptide_sequence)
 for aa in unmodified_sequence:
     if aa not in peptacular.constants.AMINO_ACIDS:
@@ -62,7 +61,7 @@ for i, mod in mod_dict.items():
 
 
 st.subheader('Fragment Ions')
-data = {'AA': list(strip_modifications(peptide_sequence))}
+data = {'AA': list(unmodified_sequence)}
 for ion_type in fragment_types:
     for charge in range(min_charge, max_charge + 1):
         frags = list(fragment_series(sequence=peptide_sequence, ion_type=ion_type,
@@ -93,11 +92,10 @@ st.table(styled_df)
 
 peptide_mass_data = {}
 for charge in range(min_charge, max_charge + 1):
-    peptide_mass_data[f'+{charge}'] = [calculate_mz(peptide_sequence, charge=charge,
-                                                               monoisotopic=is_monoisotopic)]
+    peptide_mass_data[f'+{charge}'] = [calculate_mz(peptide_sequence,
+                                                    charge=charge,
+                                                    monoisotopic=is_monoisotopic)]
 mass_df = pd.DataFrame(peptide_mass_data)
-st.subheader('Peptide Mass/Charge Table')
-st.table(mass_df)
 
 # Plotting the graph
 fig = go.Figure()
@@ -134,5 +132,7 @@ for col in df.columns[1:-4]:  # skip the 'AA' column and the forward/reverse col
 
 fig.update_layout(barmode='group', yaxis_title="Fragment Ion Sequence", xaxis_title="M/Z")
 fig.update_yaxes(ticktext=y_axis, tickvals=list(range(-len(df), len(df) + 1)))
-st.subheader('Fragment Ion Plot')
 st.plotly_chart(fig, use_container_width=True)
+
+st.subheader('Peptide Mass/Charge Table')
+st.table(mass_df)
