@@ -24,11 +24,13 @@ with st.sidebar:
                                      value=PEPTIDE_SEQUENCE,
                                      help='Peptide sequence to fragment. Include modification masses in parentheses.')
 
-    min_charge, max_charge = st.slider('Charge Range',
-                                       min_value=1,
-                                       max_value=10,
-                                       value=(MIN_CHARGE, MAX_CHARGE),
-                                       help='Charge range to fragment')
+    c1, c2 = st.columns(2)
+    min_charge = c1.number_input('Min Charge', min_value=1, value=MIN_CHARGE, help='Minimum charge to fragment')
+    max_charge = c2.number_input('Max Charge', min_value=1, value=MAX_CHARGE, help='Maximum charge to fragment')
+
+    if min_charge > max_charge:
+        st.error('Min charge must be less than or equal to max charge')
+        st.stop()
 
     mass_type = st.radio('Mass Type',
                              ['monoisotopic', 'average'],
