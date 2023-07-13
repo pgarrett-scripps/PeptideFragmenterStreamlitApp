@@ -16,7 +16,7 @@ FRAGMENT_TYPES = list(params.get('fragment_types', ['by'])[0])
 st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:")
 
 with st.sidebar:
-    st.title('Fragment Ion Calculator')
+    st.title('Peptide Fragmenter')
     st.markdown("""This app takes an amino acid sequence and calculates the fragment ions for a given charge range. Modifications should be provided in parentheses with the mass difference in Daltons.""")
     st.markdown("""For example, (-3.14)PEP(123.456)TIDE contians a -3.14 N-Term modifiction and a 123.456 modifcation on the second Proline (P).""")
 
