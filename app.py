@@ -297,10 +297,19 @@ with t2:
                      color_discrete_map=COLOR_DICT)
         fig.update_layout(title='Spectra Plot', xaxis_title='M/Z', yaxis_title='Intensity')
 
-        # add label above each bar
         for i, row in spectra_df.iterrows():
             if row['ion_type']:
-                fig.add_annotation(x=row['mz'], y=row['intensity'], text=row['ion_label'], showarrow=False, yshift=10)
+                fig.add_annotation(
+                    x=row['mz'],
+                    y=row['intensity'],
+                    text=row['ion_label'],
+                    showarrow=False,
+                    yshift=10,
+                    font=dict(
+                        size=13,
+                        color=COLOR_DICT[row['ion_color_type']]
+                    ),
+                )
 
         st.plotly_chart(fig, use_container_width=True)
 
