@@ -1,101 +1,175 @@
+from typing import List
+
 import pandas as pd
 import peptacular.constants
 import streamlit as st
+from peptacular.fragmenter import build_fragments
 from peptacular.sequence import strip_modifications, parse_modified_sequence
-from peptacular.mass import calculate_mass, fragment_series, calculate_mz
+from sortedcontainers import SortedDict
 import plotly.graph_objects as go
 import plotly.express as px
 
-from utils import color_by_ion_type, COLOR_DICT
+from constants import *
+from utils import color_by_ion_type, COLOR_DICT, is_float, get_fragment_color
 
+
+# Parse query parameters
 params = st.experimental_get_query_params()
-PEPTIDE_SEQUENCE = params.get('sequence', ['(-3.14)PEP(123.456)TIDE'])[0]
-MAX_PEPTIDE_LEN = 50
-MIN_CHARGE = int(params.get('min_charge', [1])[0])
-MAX_CHARGE = int(params.get('max_charge', [2])[0])
-MAX_PEPTIDE_CHARGE = 10
-MASS_TYPE = params.get('mass_type', ['monoisotopic'])[0]
-FRAGMENT_TYPES = list(params.get('fragment_types', ['by'])[0])
+query_peptide_sequence = params.get('sequence', [DEFAULT_PEPTIDE])[0]
+query_min_charge = int(params.get('min_charge', [DEFAULT_MIN_CHARGE])[0])
+query_max_charge = int(params.get('max_charge', [DEFAULT_MAX_CHARGE])[0])
+query_mass_type = params.get('mass_type', [DEFAULT_MASS_TYPE])[0]
+query_fragment_types = list(params.get('fragment_types', [DEFAULT_FRAGMENT_TYPES])[0])
 
 st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:")
 
+# Sidebar: Peptide Fragmenter input
 with st.sidebar:
     st.title('Peptide Fragmenter :bomb:')
-    st.markdown("""This app takes an amino acid sequence and calculates the fragment ions for a given charge range. Modifications should be provided in parentheses with the mass difference in Daltons.""")
-    st.markdown("""For example, (-3.14)PEP(123.456)TIDE contians a -3.14 N-Term modifiction and a 123.456 modifcation on the second Proline (P).""")
+    st.markdown(
+        """This app takes an amino acid sequence and calculates the fragment ions for a given charge range. 
+        Modifications should be provided in parentheses with the mass difference in Daltons.""")
 
     peptide_sequence = st.text_input('Peptide Sequence',
-                                     value=PEPTIDE_SEQUENCE,
-                                     max_chars=1000,
+                                     value=query_peptide_sequence,
+                                     max_chars=MAX_PEPTIDE_LENGTH,
                                      help='Peptide sequence to fragment. Include modification masses in parentheses.')
     peptide_len = len(strip_modifications(peptide_sequence))
-    st.caption(f'Residues: {peptide_len}/{MAX_PEPTIDE_LEN}')
+    st.caption(f'Residues: {peptide_len}/{MAX_PEPTIDE_AA_COUNT}')
 
-    if peptide_len > MAX_PEPTIDE_LEN:
-        st.error(f'Peptide length cannot exceed {MAX_PEPTIDE_LEN} amino acids')
+    # Check peptide AA count is within limits
+    if peptide_len > MAX_PEPTIDE_AA_COUNT:
+        st.error(f'Peptide length cannot exceed {MAX_PEPTIDE_AA_COUNT} amino acids')
+        st.stop()
+
+    # Verify the input sequence is valid
+    unmodified_sequence = strip_modifications(peptide_sequence)
+    if not all(aa in peptacular.constants.AMINO_ACIDS for aa in unmodified_sequence):
+        st.error(f'Invalid amino acid(s) detected.')
+        st.stop()
+
+    # verify modifications are valid
+    mod_dict = parse_modified_sequence(peptide_sequence)
+    if not all(is_float(mod) for mod in mod_dict.values()):
+        st.error('Invalid modification mass detected.')
+        st.stop()
+
+    if peptide_len == 0:
+        st.error('Peptide sequence cannot be empty')
         st.stop()
 
     c1, c2 = st.columns(2)
-    min_charge = c1.number_input('Min Charge', min_value=1, max_value = MAX_PEPTIDE_CHARGE, value=MIN_CHARGE, help='Minimum charge to fragment')
-    max_charge = c2.number_input('Max Charge', min_value=1, max_value = MAX_PEPTIDE_CHARGE, value=MAX_CHARGE, help='Maximum charge to fragment')
+    min_charge = c1.number_input(label='Min Charge',
+                                 min_value=MIN_PEPTIDE_CHARGE,
+                                 max_value=MAX_PEPTIDE_CHARGE,
+                                 value=query_min_charge,
+                                 help='Minimum charge to fragment')
+    max_charge = c2.number_input(label='Max Charge',
+                                 min_value=MIN_PEPTIDE_CHARGE,
+                                 max_value=MAX_PEPTIDE_CHARGE,
+                                 value=query_max_charge,
+                                 help='Maximum charge to fragment')
 
+    # verify min charge is less or equal to than max charge
     if min_charge > max_charge:
         st.error('Min charge must be less than or equal to max charge')
         st.stop()
 
-    mass_type = st.radio('Mass Type',
-                             ['monoisotopic', 'average'],
-                             help='Mass type to use for fragment calculation',
-                             index=0 if MASS_TYPE == 'monoisotopic' else 1)
+    mass_type = st.radio(label='Mass Type',
+                         options=['monoisotopic', 'average'],
+                         help='Mass type to use for fragment calculation',
+                         index=0 if query_mass_type == 'monoisotopic' else 1)
     is_monoisotopic = mass_type == 'monoisotopic'
 
-    fragment_types = st.multiselect('Fragment Types',
-                                    ['a', 'b', 'c', 'x', 'y', 'z'],
-                                    default=FRAGMENT_TYPES,
+    fragment_types = st.multiselect(label='Fragment Types',
+                                    options=['a', 'b', 'c', 'x', 'y', 'z'],
+                                    default=query_fragment_types,
                                     help='Fragment types to calculate')
 
-    st.subheader('Spectra (Optional)')
-    st.caption('Add spectra to match fragment ions to. One per line. Format: {m/z} {intensity}')
-    c1, c2 = st.columns(2)
-    offset = c1.number_input('Offset', value=0.0, step=0.1, min_value = 0.0, help='Offset to add to spectra')
-    offset_type = c2.radio('Offset Type', ['Da', 'ppm'], index=0, help='Offset type to add to spectra')
-    spectra = st.text_area('Spectra', value='', help='Spectra to match fragment ions to. One per line. Format: {m/z} {intensity}\\n', max_chars=10000)
+    internal_fragments = st.checkbox(label='Internal Fragments',
+                                     value=False,
+                                     help='Include internal fragments')
 
 
-st.warning('This is a work in progress. Please report any issues or suggestions to pgarrett@scripps.edu.')
-
-# check if anything is invalid
-unmodified_sequence = strip_modifications(peptide_sequence)
-for aa in unmodified_sequence:
-    if aa not in peptacular.constants.AMINO_ACIDS:
-        st.error(f'Invalid amino acid: {aa}')
-        st.stop()
-
-mod_dict = parse_modified_sequence(peptide_sequence)
-for i, mod in mod_dict.items():
-    # check if mod can be a float
-    try:
-        float(mod)
-    except ValueError:
-        st.error(f'Invalid modification mass: {mod}')
-        st.stop()
+t1, t2, t3, t4 = st.tabs(['Results', 'Spectra', 'Wiki', 'Help'])
 
 
-st.subheader('Results')
+@st.cache_data
+def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int], monoisotopic: bool,
+                    internal_fragments: bool) -> pd.DataFrame:
+
+    fragments = build_fragments(sequence=sequence,
+                                ion_types=ion_types,
+                                charges=charges,
+                                monoisotopic=monoisotopic,
+                                internal_fragments=internal_fragments)
+
+    # convert list of dataclasses to list of dicts
+    frag_df = pd.DataFrame([fragment.__dict__ for fragment in fragments])
+    frag_df['start'] = [fragment.start for fragment in fragments]
+    frag_df['end'] = [fragment.end for fragment in fragments]
+    frag_df['label'] = [fragment.label for fragment in fragments]
+
+    #  for all ends that are negative add seq_len
+    frag_df.loc[frag_df['end'] < 0, 'end'] += len(unmodified_sequence)
+    frag_df.loc[frag_df['start'] < 0, 'start'] += len(unmodified_sequence)
+
+    # where end is None, set to seq_len
+    frag_df.loc[frag_df['end'].isna(), 'end'] = len(unmodified_sequence)
+
+    return frag_df
+
+# Get all fragment ions
+frag_df = create_fragment_table(sequence=peptide_sequence,
+                            ion_types=fragment_types,
+                            charges=list(range(min_charge, max_charge + 1)),
+                            monoisotopic=is_monoisotopic,
+                            internal_fragments=internal_fragments)
+
+frag_df_downloaded = frag_df.to_csv(index=False)
+
+# make a plotly plot that will graph the segments end -> start on the y-axis, and mass on the x-axis
+traces = []
+for idx, row in frag_df.iterrows():
+    traces.append(
+        go.Scatter(
+            x=[row['mass'], row['mass']],
+            y=[row['start'], row['end']],
+            mode='lines',
+            line=dict(color=get_fragment_color(row)),
+            name=row['label'],
+        )
+    )
+
+# Create layout for the plot
+layout = go.Layout(
+    title="Fragment Segments",
+    xaxis=dict(title='Mass'),
+    yaxis=dict(title='Sequence'),
+    showlegend=False
+)
+
+# Create a Figure and add the traces
+fig = go.Figure(data=traces, layout=layout)
+fig.update_yaxes(ticktext=list(unmodified_sequence), tickvals=list(range(len(unmodified_sequence))))
+
 data = {'AA': list(unmodified_sequence)}
 for ion_type in fragment_types:
     for charge in range(min_charge, max_charge + 1):
-        frags = list(fragment_series(sequence=peptide_sequence, ion_type=ion_type,
-                                     charge=charge, monoisotopic=is_monoisotopic))
-        if ion_type in 'abc':
+        ion_df = frag_df[(frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
+        ion_df.sort_values(by=['number'], inplace=True)
+        frags = ion_df['mass'].tolist()
+
+        if ion_type in 'xyz':
             frags = frags[::-1]
 
         data[f'{ion_type}{charge}'] = frags
 
+
 # Displaying the table
 df = pd.DataFrame(data)
 df = df.reindex(sorted(df.columns), axis=1)
-df_downloaded = df.to_csv(index=False)
+#df_downloaded = df.to_csv(index=False)
 styled_df = df.style.apply(color_by_ion_type)
 
 # CSS to inject contained in a string
@@ -109,131 +183,135 @@ hide_table_row_index = """
 # Inject CSS with Markdown
 st.markdown(hide_table_row_index, unsafe_allow_html=True)
 
-# Display a static table
-st.table(styled_df)
-st.download_button(label='Download CSV', data=df_downloaded, file_name='fragment_ions.csv', use_container_width=True)
+with t1:
 
-peptide_mass_data = {}
-for charge in range(min_charge, max_charge + 1):
-    peptide_mass_data[f'+{charge}'] = [calculate_mz(peptide_sequence,
-                                                    charge=charge,
-                                                    monoisotopic=is_monoisotopic)]
-mass_df = pd.DataFrame(peptide_mass_data)
+    st.subheader('Fragment Ions')
+    st.table(styled_df)
+    st.plotly_chart(fig)
 
-# Plotting the graph
-fig = go.Figure()
+    with st.expander('Fragment Ion Data'):
 
-stripped_sequence = strip_modifications(peptide_sequence)
-forward_seq = [stripped_sequence[:i] for i in range(1, len(stripped_sequence) + 1)]
-reverse_seq = [stripped_sequence[i:] for i in range(len(stripped_sequence))]
-y_axis = reverse_seq + [''] + forward_seq
+        st.dataframe(frag_df, use_container_width=True)
+        st.download_button(label='Download CSV', data=frag_df_downloaded, file_name='fragment_ions.csv',
+                           use_container_width=True)
 
-df['forward'] = forward_seq
-df['forward_ion_num'] = list(range(1, len(df) + 1))
-df['reverse'] = reverse_seq
-df['reverse_ion_num'] = list(range(1, len(df) + 1))[::-1]
+with t2:
 
-for col in df.columns[1:-4]:  # skip the 'AA' column and the forward/reverse columns
-    ion_type = col[0]  # extract ion type from column name
-    charge = int(col[1:])  # extract charge from column name
-    color = COLOR_DICT.get(ion_type, 'grey')  # get color or default to grey if not found
+    st.subheader('Input Spectra')
+    st.caption('Add spectra to match fragment ions to. One per line. Format: {m/z} {intensity}')
 
-    if ion_type in 'abc':
-        ion_nums = list(range(1, len(df) + 1))
-        ion_labels = [f'{ion_type}{i}' for i in ion_nums]
-        hover_text = df.apply(lambda row: f"Ion Type: {ion_type}<br>m/z: {row[col]}<br>Charge: {charge}<br>Sequence: "
-                                          f"{row['forward']}<br>Ion Num: {row['forward_ion_num']}", axis=1)
-        fig.add_trace(go.Bar(x=df[col], y=list(range(1, len(df) + 1)), orientation='v', marker_color=color, name=col,
-                             hovertext=hover_text, hoverinfo='text', ))
-    else:
-        ion_nums = list(range(len(df), 0, -1))
-        ion_labels = [f'{ion_type}{i}' for i in ion_nums]
-        hover_text = df.apply(lambda row: f"Ion Type: {ion_type}<br>m/z: {row[col]}<br>Charge: {charge}<br>Sequence: "
-                                          f"{row['reverse']}<br>Ion Num: {row['reverse_ion_num']}", axis=1)
-        fig.add_trace(go.Bar(x=df[col], y=list(range(-len(df), 0)), orientation='v', marker_color=color, name=col,
-                             hovertext=hover_text, hoverinfo='text', ))
-#make bars wider
-fig.update_traces(width=2)
-fig.update_layout(barmode='group', yaxis_title="Fragment Ion Sequence", xaxis_title="M/Z", title='Fragment Ions')
-fig.update_yaxes(ticktext=y_axis, tickvals=list(range(-len(df), len(df) + 1)))
-#make taller
-fig.update_layout(height=750)
+    c1, c2 = st.columns(2)
+    tolerance_type = c2.radio(label='Tolerance Type',
+                              options=TOLERANCE_OPTIONS,
+                              index=DEFAULT_TOLERANCE_TYPE_INDEX,
+                              help='Offset type to add to spectra')
 
-st.plotly_chart(fig, use_container_width=True)
+    tolerance = c1.number_input(label='Tolerance',
+                                value=DEFAULT_TOLERANCE_TH if tolerance_type == 'Th' else DEFAULT_TOLERANCE_PPM,
+                                step=TOLERANCE_STEP_TH if tolerance_type == 'Th' else TOLERANCE_STEP_PPM,
+                                min_value=MIN_TOLERANCE_VALUE,
+                                max_value=MAX_TOLERANCE_VALUE_TH if tolerance_type == 'Th' else MAX_TOLERANCE_VALUE_PPM,
+                                help='Tolerance to use when matching fragment ions to spectra')
 
-st.subheader('Peptide Mass/Charge Table')
-st.table(mass_df)
+    min_intensity = st.number_input(label='Min Intensity',
+                                    value=DEFAULT_MIN_INTENSITY,
+                                    step=1.0,
+                                    min_value=0.0)
+    spectra = st.text_area(label='Spectra',
+                           value=open('samplespectra.txt').read(),
+                           help='Spectra to match fragment ions to. One per line. Format: {m/z} {intensity}\\n',
+                           max_chars=30_000)
 
-if spectra:
-    from sortedcontainers import SortedDict
+    if spectra:
 
-    ions = SortedDict()
-    for col in df.columns[1:-4]:  # skip the 'AA' column and the forward/reverse columns
-        ion_type = col[0]  # extract ion type from column name
-        charge = int(col[1:])  # extract charge from column name
-        if ion_type in 'abc':
-            for i, mz in enumerate(df[col]):
-                ions[mz] = (ion_type, charge, i)
-        elif ion_type in 'xyz':
-            for i, mz in enumerate(df[col][::-1]):
-                ions[mz] = (ion_type, charge, i)
+        spectra_df = pd.DataFrame()
+        spectra_df['mz'] = [float(i.split(' ')[0]) for i in spectra.split('\n')]
+        spectra_df['intensity'] = [float(i.split(' ')[1]) for i in spectra.split('\n')]
 
-    frag_df = pd.DataFrame()
-    frag_df['mz'] = [float(i.split(' ')[0]) for i in spectra.split('\n')]
-    frag_df['intensity'] = [float(i.split(' ')[1]) for i in spectra.split('\n')]
+        max_spectra_mz = spectra_df['mz'].max()
 
-    frag_ions = []
-    for mz in frag_df['mz']:
-        mz_lower = (mz - offset) if offset_type == 'Da' else (mz - offset * mz / 1_000_000)
-        mz_upper = (mz + offset) if offset_type == 'Da' else (mz + offset * mz / 1_000_000)
+        ions = SortedDict()
+        for _, row in frag_df.iterrows():
 
-        # find the closest ion to the mz
-        keys = [k for k in ions.irange(minimum=mz_lower, maximum=mz_upper)]
-        if len(keys) > 0:
+            if row['mass'] > max_spectra_mz:
+                continue
 
-            key_error = {abs(mz - k): k for k in keys}
-            best_key = key_error[min(key_error.keys())]
+            ions[row['mass']] = row
 
-            closest_mz = ions[best_key]
+        # filter by min intensity
+        spectra_df = spectra_df[spectra_df['intensity'] >= min_intensity]
 
-            #calculate the error
-            error = (mz - keys[0]) if offset_type == 'Da' else (mz - best_key) * 1_000_000 / mz
-            info = list(closest_mz) + [error]
-            frag_ions.append(info)
-        else:
-            frag_ions.append(None)
+        spectral_peak_matches = []
+        for mz in spectra_df['mz']:
+            mz_lower = (mz - tolerance) if tolerance_type == 'Th' else (mz - tolerance * mz / 1_000_000)
+            mz_upper = (mz + tolerance) if tolerance_type == 'Th' else (mz + tolerance * mz / 1_000_000)
 
-    frag_df['ion_type'] = [i[0] if i is not None else '' for i in frag_ions ]
-    frag_df['charge'] = [str(int(i[1])) if i is not None else '' for i in frag_ions]
-    frag_df['num'] = [str(int(i[2])) if i is not None else '' for i in frag_ions]
-    frag_df['error'] = [i[3] if i is not None else 0 for i in frag_ions]
-    frag_df['abs_error'] = frag_df['error'].abs()
-    # for keep only the lowest abs_error for ion_type, charge, num
-    frag_df.sort_values(by='abs_error', inplace=True)
+            # find the closest ion to the mz
+            keys = [k for k in ions.irange(minimum=mz_lower, maximum=mz_upper)]
+            if len(keys) > 0:
 
-    # Find duplicates based on 'ion_type', 'charge', 'num'
-    duplicates = frag_df.duplicated(subset=['ion_type', 'charge', 'num'], keep='first')
+                key_error = {abs(mz - k): k for k in keys}
+                best_key = key_error[min(key_error.keys())]
 
-    # Replace duplicate 'ion_type', 'charge', 'num' with ''
-    frag_df.loc[duplicates, ['ion_type', 'charge', 'num']] = ''
-    frag_df.loc[duplicates, ['abs_error', 'error']] = 0
+                closest_row = ions[best_key]
 
+                # calculate the error
+                error = (mz - keys[0]) if tolerance_type == 'Da' else (mz - best_key) * 1_000_000 / mz
+                closest_row['error'] = error
+                spectral_peak_matches.append(closest_row)
+            else:
+                spectral_peak_matches.append(None)
 
-    frag_df['ion_label'] = frag_df.apply(lambda row: f"{row['ion_type']}{row['num']}", axis=1)
-    frag_df['ion_type_charge'] = frag_df.apply(lambda row: f"{row['ion_type']}{row['charge']}", axis=1)
-    frag_df.sort_values(by='ion_type_charge', inplace=True)
-    COLOR_DICT.setdefault('', 'grey')
-    fig = px.bar(frag_df, x='mz', y='intensity', color='ion_type', hover_data=['charge', 'error'], color_discrete_map=COLOR_DICT)
-    fig.update_layout(title='Spectra Plot', xaxis_title='M/Z', yaxis_title='Intensity')
+        # fragment ion info
+        spectra_df['ion_type'] = [frag['ion_type'] if frag is not None else '' for frag in spectral_peak_matches]
+        spectra_df['internal'] = [frag['internal'] if frag is not None else '' for frag in spectral_peak_matches]
+        spectra_df['charge'] = [frag['charge'] if frag is not None else '' for frag in spectral_peak_matches]
+        spectra_df['number'] = [frag['number'] if frag is not None else '' for frag in spectral_peak_matches]
+        spectra_df['parent_number'] = [frag['parent_number'] if frag is not None else '' for frag in spectral_peak_matches]
+        spectra_df['sequence'] = [frag['sequence'] if frag is not None else '' for frag in spectral_peak_matches]
 
-    # add label above each bar
-    for i, row in frag_df.iterrows():
-        if row['ion_type']:
-            fig.add_annotation(x=row['mz'], y=row['intensity'], text=row['ion_label'], showarrow=False, yshift=10)
+        # mass error
+        spectra_df['error'] = [frag['error'] if frag is not None else 0 for frag in spectral_peak_matches]
+        spectra_df['abs_error'] = spectra_df['error'].abs()
 
-    #st.dataframe(frag_df)
-    st.plotly_chart(fig, use_container_width=True)
+        # for keep only the lowest abs_error for ion_type, charge, num
+        spectra_df.sort_values(by='abs_error', inplace=True)
+
+        # Find duplicates based on 'ion_type', 'charge', 'num', 'internal
+        duplicates = spectra_df.duplicated(subset=['ion_type', 'charge', 'number', 'internal'], keep='first')
+
+        spectra_df['ion_color_type'] = spectra_df['ion_type']
+        spectra_df.loc[spectra_df['internal'] == True, 'ion_color_type'] = 'i'
+
+        ion_labels = []
+        for _, row in spectra_df.iterrows():
+            charge_str = '+'*int(row['charge']) if row['charge'] else ''
+            ion_labels.append(f"{charge_str}{row['ion_type']}{str(row['parent_number'])}")
+
+        spectra_df['ion_label'] = ion_labels
+        spectra_df.loc[spectra_df['internal'] == True, 'ion_label'] += 'i'
 
 
+        COLOR_DICT.setdefault('', 'grey')
+        fig = px.bar(spectra_df, x='mz', y='intensity', color='ion_color_type', hover_data=['charge', 'error', 'sequence'],
+                     color_discrete_map=COLOR_DICT)
+        fig.update_layout(title='Spectra Plot', xaxis_title='M/Z', yaxis_title='Intensity')
 
+        # add label above each bar
+        for i, row in spectra_df.iterrows():
+            if row['ion_type']:
+                fig.add_annotation(x=row['mz'], y=row['intensity'], text=row['ion_label'], showarrow=False, yshift=10)
 
+        st.plotly_chart(fig, use_container_width=True)
+
+        with st.expander('Spectra Data'):
+            spectra_df.sort_values(by=['mz'], inplace=True)
+            st.dataframe(spectra_df)
+            st.download_button(label='Download CSV', data=spectra_df.to_csv(index=False), file_name='spectra_results.csv',
+                               use_container_width=True)
+
+    with t3:
+        st.markdown(WIKI)
+
+    with t4:
+        st.markdown(HELP)
