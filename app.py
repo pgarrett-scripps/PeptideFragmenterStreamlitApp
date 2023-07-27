@@ -256,7 +256,7 @@ with t2:
                 closest_row = ions[best_key]
 
                 # calculate the error
-                error = (mz - keys[0]) if tolerance_type == 'Da' else (mz - best_key) * 1_000_000 / mz
+                error = (mz - keys[0]) if tolerance_type == 'Th' else (mz - best_key) * 1_000_000 / mz
                 closest_row['error'] = error
                 spectral_peak_matches.append(closest_row)
             else:
