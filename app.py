@@ -162,7 +162,7 @@ for ion_type in fragment_types:
         if ion_type in 'xyz':
             frags = frags[::-1]
 
-        data[f'{ion_type}{"+"*charge}'] = frags
+        data[f'{"+"*charge}{ion_type}'] = frags
 
 
 # Displaying the table
