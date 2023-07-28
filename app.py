@@ -108,7 +108,7 @@ def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int
     frag_df = pd.DataFrame([fragment.__dict__ for fragment in fragments])
     frag_df['start'] = [fragment.start for fragment in fragments]
     frag_df['end'] = [fragment.end for fragment in fragments]
-    frag_df['label'] = [fragment.label for fragment in fragments]
+    frag_df['label'] = [fragment.label.replace('*', '+') for fragment in fragments]
 
     #  for all ends that are negative add seq_len
     frag_df.loc[frag_df['end'] < 0, 'end'] += len(unmodified_sequence)
@@ -116,7 +116,6 @@ def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int
 
     # where end is None, set to seq_len
     frag_df.loc[frag_df['end'].isna(), 'end'] = len(unmodified_sequence)
-
     return frag_df
 
 # Get all fragment ions
@@ -163,7 +162,7 @@ for ion_type in fragment_types:
         if ion_type in 'xyz':
             frags = frags[::-1]
 
-        data[f'{ion_type}{charge}'] = frags
+        data[f'{ion_type}{"+"*charge}'] = frags
 
 
 # Displaying the table
