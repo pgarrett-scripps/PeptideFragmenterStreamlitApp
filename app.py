@@ -153,7 +153,7 @@ fig = go.Figure(data=traces, layout=layout)
 fig.update_yaxes(ticktext=list(unmodified_sequence), tickvals=list(range(len(unmodified_sequence))))
 
 data = {'AA': list(unmodified_sequence)}
-for ion_type in fragment_types:
+for ion_type in sorted(fragment_types):
     for charge in range(min_charge, max_charge + 1):
         ion_df = frag_df[(frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
         ion_df.sort_values(by=['number'], inplace=True)
@@ -167,8 +167,6 @@ for ion_type in fragment_types:
 
 # Displaying the table
 df = pd.DataFrame(data)
-df = df.reindex(sorted(df.columns), axis=1)
-#df_downloaded = df.to_csv(index=False)
 styled_df = df.style.apply(color_by_ion_type)
 
 # CSS to inject contained in a string
