@@ -1,17 +1,18 @@
-from typing import List
+from typing import List, Tuple
 
 import pandas as pd
 import peptacular.constants
 import streamlit as st
-from peptacular.fragmenter import build_fragments
+from peptacular.fragmenter import build_fragments, Fragment
+from peptacular.score import hyper_score, binomial_score, compute_fragment_matches, FragmentMatch
 from peptacular.sequence import strip_modifications, parse_modified_sequence
-from sortedcontainers import SortedDict
 import plotly.graph_objects as go
 import plotly.express as px
 
 from constants import *
 from utils import color_by_ion_type, COLOR_DICT, is_float, get_fragment_color
 
+#TODO: Add Sequest XCorr score
 
 # Parse query parameters
 params = st.experimental_get_query_params()
@@ -90,14 +91,12 @@ with st.sidebar:
                                      value=False,
                                      help='Include internal fragments')
 
-
 t1, t2, t3, t4 = st.tabs(['Results', 'Spectra', 'Wiki', 'Help'])
 
 
 @st.cache_data
 def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int], monoisotopic: bool,
-                    internal_fragments: bool) -> pd.DataFrame:
-
+                          internal_fragments: bool) -> Tuple[List, pd.DataFrame]:
     fragments = build_fragments(sequence=sequence,
                                 ion_types=ion_types,
                                 charges=charges,
@@ -116,20 +115,21 @@ def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int
 
     # where end is None, set to seq_len
     frag_df.loc[frag_df['end'].isna(), 'end'] = len(unmodified_sequence)
-    return frag_df
+    return fragments, frag_df
+
 
 # Get all fragment ions
-frag_df = create_fragment_table(sequence=peptide_sequence,
-                            ion_types=fragment_types,
-                            charges=list(range(min_charge, max_charge + 1)),
-                            monoisotopic=is_monoisotopic,
-                            internal_fragments=internal_fragments)
+fragments, frag_df = create_fragment_table(sequence=peptide_sequence,
+                                           ion_types=fragment_types,
+                                           charges=list(range(min_charge, max_charge + 1)),
+                                           monoisotopic=is_monoisotopic,
+                                           internal_fragments=internal_fragments)
 
 frag_df_downloaded = frag_df.to_csv(index=False)
 
 # make a plotly plot that will graph the segments end -> start on the y-axis, and mass on the x-axis
 traces = []
-for idx, row in frag_df.iterrows():
+for idx, row in frag_df[frag_df['internal'] == False].iterrows():
     traces.append(
         go.Scatter(
             x=[row['mass'], row['mass']],
@@ -152,49 +152,78 @@ layout = go.Layout(
 fig = go.Figure(data=traces, layout=layout)
 fig.update_yaxes(ticktext=list(unmodified_sequence), tickvals=list(range(len(unmodified_sequence))))
 
-data = {'AA': list(unmodified_sequence)}
-for ion_type in sorted(fragment_types):
-    for charge in range(min_charge, max_charge + 1):
-        ion_df = frag_df[(frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
+dfs = []
+combined_data = {'AA': list(unmodified_sequence)}
+for charge in range(min_charge, max_charge + 1):
+    data = {'AA': list(unmodified_sequence)}
+    for ion_type in sorted(fragment_types):
+        ion_df = frag_df[
+            (frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
         ion_df.sort_values(by=['number'], inplace=True)
         frags = ion_df['mass'].tolist()
 
         if ion_type in 'xyz':
             frags = frags[::-1]
 
-        data[f'{"+"*charge}{ion_type}'] = frags
+        data[ion_type] = frags
 
+        combined_data[ion_type + str(charge)] = frags
 
-# Displaying the table
-df = pd.DataFrame(data)
-styled_df = df.style.apply(color_by_ion_type)
+    # Displaying the table
+    df = pd.DataFrame(data)
+    df['# (abc)'] = list(range(1, len(df) + 1))
+    df['# (xyz)'] = list(range(1, len(df) + 1))[::-1]
+
+    # reorder columns so that # is first # +1 is last and AA is in the middle
+    df = df[['AA'] + ['# (abc)'] + [col for col in df.columns if col not in ['AA', '# (abc)', '# (xyz)']] + ['# (xyz)']]
+    dfs.append(df)
+
+combined_df = pd.DataFrame(combined_data)
+# sort columns based on alphabetical order
+combined_df = combined_df.reindex(sorted(combined_df.columns), axis=1)
+
+styled_dfs = []
+
+for df in dfs:
+    styled_df = df.style.apply(color_by_ion_type)
+
+    # Set table styles with increased horizontal padding for more space between columns,
+    # centered text, and no borders
+    styles = [
+        dict(selector="td", props=[("padding", "2px 2px"), ("text-align", "center"), ("border", "none")]),
+        dict(selector="th", props=[("padding", "2px 2px"), ("text-align", "center"), ("border", "none")])
+    ]
+    styled_df = styled_df.set_table_styles(styles)
+    styled_dfs.append(styled_df)
 
 # CSS to inject contained in a string
-hide_table_row_index = """
+hide_table_row_index_and_adjust_padding = """
             <style>
             thead tr th:first-child {display:none}
             tbody th {display:none}
+            td, th {padding: 0px}  /* Padding adjustment for all table cells */
             </style>
             """
 
 # Inject CSS with Markdown
-st.markdown(hide_table_row_index, unsafe_allow_html=True)
+st.markdown(hide_table_row_index_and_adjust_padding, unsafe_allow_html=True)
 
 with t1:
+    st.header('Fragment Ions')
 
-    st.subheader('Fragment Ions')
-    st.table(styled_df)
+    for styled_df, charge in zip(styled_dfs, list(range(min_charge, max_charge + 1))):
+        st.subheader(f'Charge {charge}')
+        st.table(styled_df)
+
     st.plotly_chart(fig)
 
     with st.expander('Fragment Ion Data'):
-
         st.dataframe(frag_df, use_container_width=True)
         st.download_button(label='Download CSV', data=frag_df_downloaded, file_name='fragment_ions.csv',
                            use_container_width=True)
 
 with t2:
-
-    st.subheader('Input Spectra')
+    st.header('Input Spectra')
     st.caption('Add spectra to match fragment ions to. One per line. Format: {m/z} {intensity}')
 
     c1, c2 = st.columns(2)
@@ -204,10 +233,10 @@ with t2:
                               help='Offset type to add to spectra')
 
     tolerance = c1.number_input(label='Tolerance',
-                                value=DEFAULT_TOLERANCE_TH if tolerance_type == 'Th' else DEFAULT_TOLERANCE_PPM,
-                                step=TOLERANCE_STEP_TH if tolerance_type == 'Th' else TOLERANCE_STEP_PPM,
+                                value=DEFAULT_TOLERANCE_TH if tolerance_type == 'th' else DEFAULT_TOLERANCE_PPM,
+                                step=TOLERANCE_STEP_TH if tolerance_type == 'th' else TOLERANCE_STEP_PPM,
                                 min_value=MIN_TOLERANCE_VALUE,
-                                max_value=MAX_TOLERANCE_VALUE_TH if tolerance_type == 'Th' else MAX_TOLERANCE_VALUE_PPM,
+                                max_value=MAX_TOLERANCE_VALUE_TH if tolerance_type == 'th' else MAX_TOLERANCE_VALUE_PPM,
                                 help='Tolerance to use when matching fragment ions to spectra')
 
     min_intensity = st.number_input(label='Min Intensity',
@@ -221,76 +250,52 @@ with t2:
 
     if spectra:
 
-        spectra_df = pd.DataFrame()
-        spectra_df['mz'] = [float(i.split(' ')[0]) for i in spectra.split('\n')]
-        spectra_df['intensity'] = [float(i.split(' ')[1]) for i in spectra.split('\n')]
+        mz_values, intensity_values = [], []
 
-        max_spectra_mz = spectra_df['mz'].max()
+        for line in spectra.split('\n'):
+            mz, intensity = line.split(' ')
+            mz = float(mz)
+            intensity = float(intensity)
 
-        ions = SortedDict()
-        for _, row in frag_df.iterrows():
-
-            if row['mass'] > max_spectra_mz:
+            if intensity <= min_intensity:
                 continue
 
-            ions[row['mass']] = row
+            mz_values.append(mz)
+            intensity_values.append(intensity)
 
-        # filter by min intensity
-        spectra_df = spectra_df[spectra_df['intensity'] >= min_intensity]
+        max_spectra_mz = max(mz_values)
 
-        spectral_peak_matches = []
-        for mz in spectra_df['mz']:
-            mz_lower = (mz - tolerance) if tolerance_type == 'Th' else (mz - tolerance * mz / 1_000_000)
-            mz_upper = (mz + tolerance) if tolerance_type == 'Th' else (mz + tolerance * mz / 1_000_000)
+        fragment_matches = compute_fragment_matches(fragments, mz_values, intensity_values, tolerance, tolerance_type)
+        fragment_matches.sort(key=lambda x: abs(x.error), reverse=True)
+        fragment_matches = {fm.mz: fm for fm in fragment_matches}  # keep the best error for each fragment
 
-            # find the closest ion to the mz
-            keys = [k for k in ions.irange(minimum=mz_lower, maximum=mz_upper)]
-            if len(keys) > 0:
+        data = []
+        for mz, i in zip(mz_values, intensity_values):
+            default_fm = FragmentMatch(Fragment('', 0, 0, '', 0, False, 0), mz, i)
+            fm = fragment_matches.get(mz, default_fm)
 
-                key_error = {abs(mz - k): k for k in keys}
-                best_key = key_error[min(key_error.keys())]
+            # merge dicts
+            data.append({**fm.fragment.__dict__, **fm.__dict__, 'error': fm.error, 'abs_error': abs(fm.error)})
 
-                closest_row = ions[best_key]
-
-                # calculate the error
-                error = (mz - keys[0]) if tolerance_type == 'Th' else (mz - best_key) * 1_000_000 / mz
-                closest_row['error'] = error
-                spectral_peak_matches.append(closest_row)
-            else:
-                spectral_peak_matches.append(None)
-
-        # fragment ion info
-        spectra_df['ion_type'] = [frag['ion_type'] if frag is not None else '' for frag in spectral_peak_matches]
-        spectra_df['internal'] = [frag['internal'] if frag is not None else '' for frag in spectral_peak_matches]
-        spectra_df['charge'] = [frag['charge'] if frag is not None else '' for frag in spectral_peak_matches]
-        spectra_df['number'] = [frag['number'] if frag is not None else '' for frag in spectral_peak_matches]
-        spectra_df['parent_number'] = [frag['parent_number'] if frag is not None else '' for frag in spectral_peak_matches]
-        spectra_df['sequence'] = [frag['sequence'] if frag is not None else '' for frag in spectral_peak_matches]
-
-        # mass error
-        spectra_df['error'] = [frag['error'] if frag is not None else 0 for frag in spectral_peak_matches]
-        spectra_df['abs_error'] = spectra_df['error'].abs()
+        spectra_df = pd.DataFrame(data)
 
         # for keep only the lowest abs_error for ion_type, charge, num
         spectra_df.sort_values(by='abs_error', inplace=True)
-
-        # Find duplicates based on 'ion_type', 'charge', 'num', 'internal
-        duplicates = spectra_df.duplicated(subset=['ion_type', 'charge', 'number', 'internal'], keep='first')
 
         spectra_df['ion_color_type'] = spectra_df['ion_type']
         spectra_df.loc[spectra_df['internal'] == True, 'ion_color_type'] = 'i'
 
         ion_labels = []
         for _, row in spectra_df.iterrows():
-            charge_str = '+'*int(row['charge']) if row['charge'] else ''
+            charge_str = '+' * int(row['charge']) if row['charge'] else ''
             ion_labels.append(f"{charge_str}{row['ion_type']}{str(row['parent_number'])}")
 
         spectra_df['ion_label'] = ion_labels
         spectra_df.loc[spectra_df['internal'] == True, 'ion_label'] += 'i'
 
-
         COLOR_DICT.setdefault('', 'grey')
-        fig = px.bar(spectra_df, x='mz', y='intensity', color='ion_color_type', hover_data=['charge', 'error', 'sequence'],
+        fig = px.bar(spectra_df, x='mz', y='intensity', color='ion_color_type',
+                     hover_data=['charge', 'error', 'sequence'],
                      color_discrete_map=COLOR_DICT)
         fig.update_layout(title='Spectra Plot', xaxis_title='M/Z', yaxis_title='Intensity')
 
@@ -310,10 +315,46 @@ with t2:
 
         st.plotly_chart(fig, use_container_width=True)
 
+        spectra_df.sort_values(by='mz', inplace=True)
+
+        st.caption('Score are under development and may not be accurate')
+        hs = hyper_score(fragments, spectra_df['mz'].tolist(), spectra_df['intensity'].tolist(), tolerance,
+                         tolerance_type)
+        st.metric(f'Hyperscore', hs)
+        bs = binomial_score(fragments, spectra_df['mz'].tolist(), spectra_df['intensity'].tolist(), tolerance,
+                            tolerance_type)
+        st.metric(f'Binomial Score', bs)
+
+        def highlight_cells(data):
+            # Initialize empty DataFrame with same index and columns as original
+            styled = pd.DataFrame('', index=data.index, columns=data.columns)
+
+            # Iterate over cells and update `styled` based on cell position
+            for row in data.index:
+                for col in data.columns:
+                    if col == 'AA':
+                        continue
+                    label = '+' * int(col[1:]) + col[0] + str(row + 1)
+                    if label in accepted_normal_ions:
+                        styled.loc[row, col] = 'background-color: yellow'
+                    elif label + 'i' in accepted_internal_ions:
+                        styled.loc[row, col] = 'background-color: magenta'
+
+            return styled
+
+
+        matched_ions = spectra_df[spectra_df['ion_type'] != '']
+        accepted_normal_ions = matched_ions[matched_ions['internal'] == False]['ion_label'].tolist()
+        accepted_internal_ions = matched_ions[matched_ions['internal'] == True]['ion_label'].tolist()
+
+        combined_df = combined_df.style.apply(highlight_cells, axis=None)
+        st.table(combined_df)
+
         with st.expander('Spectra Data'):
             spectra_df.sort_values(by=['mz'], inplace=True)
             st.dataframe(spectra_df)
-            st.download_button(label='Download CSV', data=spectra_df.to_csv(index=False), file_name='spectra_results.csv',
+            st.download_button(label='Download CSV', data=spectra_df.to_csv(index=False),
+                               file_name='spectra_results.csv',
                                use_container_width=True)
 
     with t3:
