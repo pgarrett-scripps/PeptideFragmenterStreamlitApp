@@ -2,7 +2,7 @@
 
 PeptideFragmenter is a web application built with Streamlit that provides peptide fragmentation functionality. Users can input a peptide sequence and obtain calculated fragment ions for a specified charge range. The application also allows users to match fragment ions to input spectra.
 
-https://peptidefragmenter.streamlit.app
+Check it out on Streamlits Community Cloud: https://peptidefragmenter.streamlit.app
 
 ## Features
 
