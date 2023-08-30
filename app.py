@@ -3,16 +3,14 @@ from typing import List, Tuple
 import pandas as pd
 import peptacular.constants
 import streamlit as st
-from peptacular.fragmenter import build_fragments, Fragment
+from peptacular.fragment import build_fragments, Fragment
 from peptacular.score import hyper_score, binomial_score, compute_fragment_matches, FragmentMatch
-from peptacular.sequence import strip_modifications, parse_modified_sequence
+from peptacular.sequence import strip_modifications, get_modifications
 import plotly.graph_objects as go
 import plotly.express as px
 
 from constants import *
 from utils import color_by_ion_type, COLOR_DICT, is_float, get_fragment_color
-
-#TODO: Add Sequest XCorr score
 
 # Parse query parameters
 params = st.experimental_get_query_params()
@@ -29,7 +27,8 @@ with st.sidebar:
     st.title('Peptide Fragmenter :bomb:')
     st.markdown(
         """This app takes an amino acid sequence and calculates the fragment ions for a given charge range. 
-        Modifications should be provided in parentheses with the mass difference in Daltons.""")
+        Modifications should be provided in parentheses with the mass difference in Daltons. Terminal modifications 
+        use square brackets.""")
 
     peptide_sequence = st.text_input('Peptide Sequence',
                                      value=query_peptide_sequence,
@@ -50,7 +49,7 @@ with st.sidebar:
         st.stop()
 
     # verify modifications are valid
-    mod_dict = parse_modified_sequence(peptide_sequence)
+    mod_dict = get_modifications(peptide_sequence)
     if not all(is_float(mod) for mod in mod_dict.values()):
         st.error('Invalid modification mass detected.')
         st.stop()
@@ -96,12 +95,12 @@ t1, t2, t3, t4 = st.tabs(['Results', 'Spectra', 'Wiki', 'Help'])
 
 @st.cache_data
 def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int], monoisotopic: bool,
-                          internal_fragments: bool) -> Tuple[List, pd.DataFrame]:
+                          internal: bool) -> Tuple[List, pd.DataFrame]:
     fragments = build_fragments(sequence=sequence,
                                 ion_types=ion_types,
                                 charges=charges,
                                 monoisotopic=monoisotopic,
-                                internal_fragments=internal_fragments)
+                                internal=internal)
 
     # convert list of dataclasses to list of dicts
     frag_df = pd.DataFrame([fragment.__dict__ for fragment in fragments])
@@ -123,7 +122,7 @@ fragments, frag_df = create_fragment_table(sequence=peptide_sequence,
                                            ion_types=fragment_types,
                                            charges=list(range(min_charge, max_charge + 1)),
                                            monoisotopic=is_monoisotopic,
-                                           internal_fragments=internal_fragments)
+                                           internal=internal_fragments)
 
 frag_df_downloaded = frag_df.to_csv(index=False)
 
@@ -132,7 +131,7 @@ traces = []
 for idx, row in frag_df[frag_df['internal'] == False].iterrows():
     traces.append(
         go.Scatter(
-            x=[row['mass'], row['mass']],
+            x=[row['mz'], row['mz']],
             y=[row['start'], row['end']],
             mode='lines',
             line=dict(color=get_fragment_color(row)),
@@ -143,7 +142,7 @@ for idx, row in frag_df[frag_df['internal'] == False].iterrows():
 # Create layout for the plot
 layout = go.Layout(
     title="Fragment Segments",
-    xaxis=dict(title='Mass'),
+    xaxis=dict(title='M/Z'),
     yaxis=dict(title='Sequence'),
     showlegend=False
 )
@@ -160,7 +159,7 @@ for charge in range(min_charge, max_charge + 1):
         ion_df = frag_df[
             (frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
         ion_df.sort_values(by=['number'], inplace=True)
-        frags = ion_df['mass'].tolist()
+        frags = ion_df['mz'].tolist()
 
         if ion_type in 'xyz':
             frags = frags[::-1]
@@ -324,6 +323,7 @@ with t2:
         bs = binomial_score(fragments, spectra_df['mz'].tolist(), spectra_df['intensity'].tolist(), tolerance,
                             tolerance_type)
         st.metric(f'Binomial Score', bs)
+
 
         def highlight_cells(data):
             # Initialize empty DataFrame with same index and columns as original
