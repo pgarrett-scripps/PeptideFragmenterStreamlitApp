@@ -13,14 +13,17 @@ from constants import *
 from utils import color_by_ion_type, COLOR_DICT, is_float, get_fragment_color
 
 # Parse query parameters
-params = st.experimental_get_query_params()
-query_peptide_sequence = params.get('sequence', [DEFAULT_PEPTIDE])[0]
-query_min_charge = int(params.get('min_charge', [DEFAULT_MIN_CHARGE])[0])
-query_max_charge = int(params.get('max_charge', [DEFAULT_MAX_CHARGE])[0])
-query_mass_type = params.get('mass_type', [DEFAULT_MASS_TYPE])[0]
-query_fragment_types = list(params.get('fragment_types', [DEFAULT_FRAGMENT_TYPES])[0])
+params = st.query_params
+query_peptide_sequence = params.get('sequence', DEFAULT_PEPTIDE)
+query_min_charge = int(params.get('min_charge', DEFAULT_MIN_CHARGE))
+query_max_charge = int(params.get('max_charge', DEFAULT_MAX_CHARGE))
+query_mass_type = params.get('mass_type', DEFAULT_MASS_TYPE)
+query_fragment_types = list(params.get('fragment_types', DEFAULT_FRAGMENT_TYPES))
 
-st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:")
+query_spectra = params.get('spectra', DEFAULT_SPECTRA)
+query_spectra = '\n'.join([f'{pair.split(":")[0]} {pair.split(":")[1]}' for pair in query_spectra.split(';')])
+
+st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:", layout="wide")
 
 # Sidebar: Peptide Fragmenter input
 with st.sidebar:
@@ -90,6 +93,17 @@ with st.sidebar:
                                      value=False,
                                      help='Include internal fragments')
 
+
+def generate_app_url(sequence: str, min_charge: int, max_charge: int, mass_type: str, fragment_types: List[str]):
+    # Generate the app URL
+    url = f'{BASE_URL}?sequence={sequence}&min_charge={min_charge}&max_charge={max_charge}&mass_type={mass_type}&fragment_types={"".join(fragment_types)}'
+    return url
+
+
+url = generate_app_url(peptide_sequence, min_charge, max_charge, mass_type, fragment_types)
+
+st.write(f'##### [Analysis URL]({url}) (copy me and send to your friends!)')
+
 t1, t2, t3, t4 = st.tabs(['Results', 'Spectra', 'Wiki', 'Help'])
 
 
@@ -107,6 +121,7 @@ def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int
     frag_df['start'] = [fragment.start for fragment in fragments]
     frag_df['end'] = [fragment.end for fragment in fragments]
     frag_df['label'] = [fragment.label.replace('*', '+') for fragment in fragments]
+    frag_df['mz'] = [fragment.mz for fragment in fragments]
 
     #  for all ends that are negative add seq_len
     frag_df.loc[frag_df['end'] < 0, 'end'] += len(unmodified_sequence)
@@ -159,6 +174,7 @@ for charge in range(min_charge, max_charge + 1):
         ion_df = frag_df[
             (frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
         ion_df.sort_values(by=['number'], inplace=True)
+
         frags = ion_df['mz'].tolist()
 
         if ion_type in 'xyz':
@@ -214,7 +230,7 @@ with t1:
         st.subheader(f'Charge {charge}')
         st.table(styled_df)
 
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
 
     with st.expander('Fragment Ion Data'):
         st.dataframe(frag_df, use_container_width=True)
@@ -243,7 +259,7 @@ with t2:
                                     step=1.0,
                                     min_value=0.0)
     spectra = st.text_area(label='Spectra',
-                           value=open('samplespectra.txt').read(),
+                           value=query_spectra,
                            help='Spectra to match fragment ions to. One per line. Format: {m/z} {intensity}\\n',
                            max_chars=30_000)
 
@@ -269,12 +285,21 @@ with t2:
         fragment_matches = {fm.mz: fm for fm in fragment_matches}  # keep the best error for each fragment
 
         data = []
-        for mz, i in zip(mz_values, intensity_values):
-            default_fm = FragmentMatch(Fragment('', 0, 0, '', 0, False, 0), mz, i)
-            fm = fragment_matches.get(mz, default_fm)
 
-            # merge dicts
-            data.append({**fm.fragment.__dict__, **fm.__dict__, 'error': fm.error, 'abs_error': abs(fm.error)})
+        for mz, i in zip(mz_values, intensity_values):
+            fm = fragment_matches.get(mz, None)
+
+            if fm:
+                data.append(
+                    {'sequence': fm.fragment.sequence, 'charge': fm.fragment.charge, 'ion_type': fm.fragment.ion_type,
+                     'number': fm.fragment.number, 'internal': fm.fragment.internal,
+                     'parent_number': fm.fragment.parent_number, 'monoisotopic': fm.fragment.monoisotopic, 'mz': mz,
+                     'intensity': i, 'error': fm.error, 'abs_error': abs(fm.error)})
+
+            else:
+                data.append({'sequence': '', 'charge': 0, 'ion_type': '', 'number': 0, 'internal': False,
+                             'parent_number': 0, 'monoisotopic': True, 'mz': mz,
+                             'intensity': i, 'error': 0, 'abs_error': 0})
 
         spectra_df = pd.DataFrame(data)
 
@@ -286,8 +311,17 @@ with t2:
 
         ion_labels = []
         for _, row in spectra_df.iterrows():
-            charge_str = '+' * int(row['charge']) if row['charge'] else ''
-            ion_labels.append(f"{charge_str}{row['ion_type']}{str(row['parent_number'])}")
+
+            try:
+                charge_str = '+' * int(row['charge'])
+                ion_type_str = row['ion_type']
+                parent_number_str = str(int(row['parent_number']))
+            except ValueError:
+                charge_str = ''
+                ion_type_str = ''
+                parent_number_str = ''
+
+            ion_labels.append(f"{charge_str}{ion_type_str}{parent_number_str}")
 
         spectra_df['ion_label'] = ion_labels
         spectra_df.loc[spectra_df['internal'] == True, 'ion_label'] += 'i'

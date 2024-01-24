@@ -1,4 +1,3 @@
-
 COLOR_DICT = {'a': 'brown', 'b': 'blue', 'c': 'green', 'x': 'orange', 'y': 'red', 'z': 'purple', 'i': 'magenta'}
 
 
@@ -8,6 +7,7 @@ def color_by_ion_type(col):
     color = COLOR_DICT.get(ion_type, 'grey')  # get color or default to grey if not found
     return ['color: %s' % color] * len(col)
 
+
 def get_fragment_color(row):
     color = COLOR_DICT.get(row['ion_type'], 'black')
 
@@ -15,6 +15,7 @@ def get_fragment_color(row):
         color = 'magenta'
 
     return color
+
 
 def is_float(value):
     try:
