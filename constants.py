@@ -21,9 +21,9 @@ DEFAULT_MASS_TYPE = 'monoisotopic'
 DEFAULT_FRAGMENT_TYPES = 'by'
 
 MIN_PEPTIDE_CHARGE = 1
-MAX_PEPTIDE_CHARGE = get_env_int('MAX_PEPTIDE_CHARGE', 5)
-MAX_PEPTIDE_AA_COUNT = get_env_int('MAX_PEPTIDE_AA_COUNT', 50)
-MAX_PEPTIDE_LENGTH = get_env_int('MAX_PEPTIDE_LENGTH', 1000)
+MAX_PEPTIDE_CHARGE = get_env_int('MAX_PEPTIDE_CHARGE', 20)
+MAX_PEPTIDE_AA_COUNT = get_env_int('MAX_PEPTIDE_AA_COUNT', 150)
+MAX_PEPTIDE_LENGTH = get_env_int('MAX_PEPTIDE_LENGTH', 2000)
 
 # SPECTRA PARAMS
 DEFAULT_TOLERANCE_TH = 0.5
@@ -50,7 +50,7 @@ WIKI = """
 
 ## Introduction
 
-Peptide fragmentation refers to the process by which peptides (short chains of amino acid monomers linked by peptide bonds) are broken into smaller fragments. This occurs during mass spectrometry analysis to provide useful information about the peptide's sequence, structure, and identity. The process uses methods such as collision-induced dissociation (CID), electron-transfer dissociation (ETD), or higher-energy collisional dissociation (HCD).
+Peptide fragmentation refers to the process by which peptides (short chains of amino acid monomers linked by peptide bonds) are broken into smaller fragments. This occurs during mass spectrometry analysis to provide useful information about the peptide's sequence and structure. The process uses methods such as collision-induced dissociation (CID), electron-transfer dissociation (ETD), or higher-energy collisional dissociation (HCD).
 
 ## Basic Concept
 
@@ -62,12 +62,11 @@ A peptide molecule consists of multiple amino acids linked together by peptide b
 
 When peptides are subjected to fragmentation in mass spectrometry, the peptide bonds are targeted. The energy imparted to the molecule causes these bonds to break, creating different fragment ions. These fragments are typically classified into six types based on the location of the bond break: a, b, and c ions are the N-terminal fragments, and x, y, and z ions are the C-terminal fragments.
 
-
 ### Example abcxyz Fragment Ions
 
 For example, consider the following peptide sequence: PEPTIDE. It can prodice the the following theoretical fragment ion sequences.
 ```
-a/b/c ions (start from the front, just like the alphabet)
+a/b/c ions start from the front (just like the alphabet)
 1 - P
 2 - PE
 3 - PEP
@@ -76,7 +75,7 @@ a/b/c ions (start from the front, just like the alphabet)
 6 - PEPTID
 7 - PEPTIDE
 
-x/y/z ions (start from the back, just like the alphabet)
+while x/y/z ions start from the back
 1 - E
 2 - DE
 3 - IDE
@@ -106,9 +105,7 @@ Like CID, HCD commonly results in b and y ions, but with more secondary fragment
 
 ## Analysis
 
-The resulting fragment ions are then analyzed by the mass spectrometer. By examining the m/z (mass-to-charge) ratio of the fragment ions, researchers can deduce the amino acid sequence of the original peptide. This process is crucial in protein identification and characterization.
-
-
+The resulting fragment ions are then analyzed by the mass spectrometer. By examining the m/z (mass-to-charge) ratio of the fragment ions, researchers can deduce the amino acid sequence of the original peptide. 
 
 ## Understanding Internal Fragment Ions
 
@@ -154,19 +151,19 @@ The **Peptide Fragmenter** application is a tool for in silico fragmentation of 
 
 - **Fragment Types**: Select the types of fragments to calculate: 'a', 'b', 'c', 'x', 'y', 'z'. 
 
-- **Internal Fragments**: Check this box if you want to include internal fragments in the calculation. 
-
 ## Outputs
 
 - **Results Tab**: This tab presents the calculated fragment ions in a table, and a plot that shows the fragment segments in a sequence versus mass plot. You can download the fragment ion data as a CSV file.
 
-- **Spectra Tab**: This tab presents an input form to add spectra to match fragment ions to. The format for spectra is: {m/z} {intensity}, one per line. There is also an option to adjust the offset and its type (Da or ppm), and the minimum intensity. If spectra data is provided, the tab displays a plot with matching ions marked and a table of the spectra data. This data can also be downloaded as a CSV file.
-
 - **Wiki Tab**: This tab presents a wiki page with general information on peptide fragmentation.
 
-- **Help Tab**: This tab presents a help page on how to use the application (You're currently here).
+- **Help Tab**: This tab presents a help page on how to use the application.
 
 If you encounter any issues or have suggestions for improvement, please contact pgarrett@scripps.edu.
 
 This is a work in progress and your feedback is greatly appreciated!
+
+## Some Modifications
+
+https://web.expasy.org/findmod/findmod_masses.html
 """
