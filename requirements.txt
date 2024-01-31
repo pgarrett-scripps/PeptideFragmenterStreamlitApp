@@ -1,4 +1,4 @@
 pandas==2.0.3
 streamlit==1.30.0
 plotly==5.15.0
-peptacular==1.0.1
+peptacular==1.2.0
