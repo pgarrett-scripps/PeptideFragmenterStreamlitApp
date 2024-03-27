@@ -1,4 +1,20 @@
-COLOR_DICT = {'a': 'brown', 'b': 'blue', 'c': 'green', 'x': 'orange', 'y': 'red', 'z': 'purple', 'i': 'magenta'}
+COLOR_DICT = {
+    'a': '#8c564b',  # Darker Brown
+    'b': '#1f77b4',  # Vivid Blue
+    'c': '#2ca02c',  # Green
+    'x': '#ff7f0e',  # Bright Orange
+    'y': '#d62728',  # Red
+    'z': '#9467bd',  # Purple
+    'ax': '#e377c2', # Magenta
+    'ay': '#f7b6d2', # Pink
+    'az': '#c5b0d5', # Lavender
+    'bx': '#1f77b4', # Darker Navy (Consider adjusting if too similar to 'b')
+    'by': '#aec7e8', # Light Blue
+    'bz': '#98df8a', # Light Green
+    'cx': '#238b45', # Dark Green
+    'cy': '#d62728', # Different shade of Red (Consider changing to avoid duplication)
+    'cz': '#d62728'  # (Adjust to introduce distinction, e.g., teal)
+}
 
 
 # Function to apply color according to ion type
@@ -10,9 +26,6 @@ def color_by_ion_type(col):
 
 def get_fragment_color(row):
     color = COLOR_DICT.get(row['ion_type'], 'black')
-
-    if row['internal'] is True:
-        color = 'magenta'
 
     return color
 

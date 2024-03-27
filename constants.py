@@ -14,13 +14,13 @@ def get_env_str(var_name, default):
 
 
 # FRAGMENTER PARAMS
-DEFAULT_PEPTIDE = '[164.0700]FDSFGDLSSASAIM(16)GNPK'
+DEFAULT_PEPTIDE = '[164.0700]-FDSFGDLSSASAIM[16]GNPK'
 DEFAULT_MIN_CHARGE = 1
 DEFAULT_MAX_CHARGE = 2
 DEFAULT_MASS_TYPE = 'monoisotopic'
-DEFAULT_FRAGMENT_TYPES = 'by'
+DEFAULT_FRAGMENT_TYPES = 'a;b;c;x;y;z'
 
-MIN_PEPTIDE_CHARGE = 1
+MIN_PEPTIDE_CHARGE = 0
 MAX_PEPTIDE_CHARGE = get_env_int('MAX_PEPTIDE_CHARGE', 20)
 MAX_PEPTIDE_AA_COUNT = get_env_int('MAX_PEPTIDE_AA_COUNT', 150)
 MAX_PEPTIDE_LENGTH = get_env_int('MAX_PEPTIDE_LENGTH', 2000)
@@ -87,33 +87,43 @@ while x/y/z ions start from the back
 
 ## Collision-Induced Dissociation (CID)
 
-CID is the most commonly used method of peptide fragmentation. In CID, peptides are accelerated in an electric field to give them kinetic energy, and then they collide with a neutral gas molecule, causing them to fragment.
+CID is the most commonly used method of peptide fragmentation. In CID, peptides are accelerated in an electric field 
+to give them kinetic energy, and then they collide with a neutral gas molecule, causing them to fragment.
 
-The major fragment ions produced in CID are b and y ions. In general, CID is excellent for generating sequence information for peptides and works well for a broad range of peptides.
+The major fragment ions produced in CID are b and y ions. In general, CID is excellent for generating sequence 
+information for peptides and works well for a broad range of peptides.
 
 ## Electron-Transfer Dissociation (ETD)
 
-ETD is a fragmentation method that can preserve post-translational modifications, making it valuable for the study of protein modifications. In ETD, peptides are fragmented by transferring an electron to the peptide, which causes it to break apart.
+ETD is a fragmentation method that can preserve post-translational modifications, making it valuable for the study of 
+protein modifications. In ETD, peptides are fragmented by transferring an electron to the peptide, which causes it to 
+break apart.
 
 ETD commonly results in c and z ions. This method is especially useful for longer and more charged peptides.
 
 ## Higher-Energy Collisional Dissociation (HCD)
 
-HCD is a hybrid method that uses CID-type fragmentation, but with higher energy. This method generates a broader distribution of ion types and can lead to more complete sequence coverage.
+HCD is a hybrid method that uses CID-type fragmentation, but with higher energy. This method generates a broader 
+distribution of ion types and can lead to more complete sequence coverage.
 
 Like CID, HCD commonly results in b and y ions, but with more secondary fragmentation.
 
 ## Analysis
 
-The resulting fragment ions are then analyzed by the mass spectrometer. By examining the m/z (mass-to-charge) ratio of the fragment ions, researchers can deduce the amino acid sequence of the original peptide. 
+The resulting fragment ions are then analyzed by the mass spectrometer. By examining the m/z (mass-to-charge) ratio 
+of the fragment ions, researchers can deduce the amino acid sequence of the original peptide. 
 
 ## Understanding Internal Fragment Ions
 
-These ions originate when fragmentation transpires at two separate points along the peptide, yielding a fragment that is 'internal' to the peptide's sequence. This process entails the breaking of not one, but two peptide bonds, leading to the creation of a peptide fragment that isn't connected to either the N-terminus or C-terminus of the original peptide.
+These ions originate when fragmentation transpires at two separate points along the peptide, yielding a fragment that 
+is 'internal' to the peptide's sequence. This process entails the breaking of not one, but two peptide bonds, leading 
+to the creation of a peptide fragment that isn't connected to either the N-terminus or C-terminus of the original 
+peptide.
 
 ### Example Internal Fragmentation
 
-Let's take the peptide sequence 'PEPTIDE' as an example. Here is its 'b' ion series, signifying that all fragment ions originate at the N-terminus:
+Let's take the peptide sequence 'PEPTIDE' as an example. Here is its 'b' ion series, signifying that all fragment ions 
+originate at the N-terminus:
 ```
 b1 - P
 b2 - PE
@@ -123,7 +133,9 @@ b5 - PEPTI
 b6 - PEPTID
 b7 - PEPTIDE
 ```
-In comparison, the internal fragment ions for the same peptide sequence 'PEPTIDE' are shown below. The internal fragment ions for each 'b' ion are denoted in parentheses. Notice the shift in the pattern of fragmentation, now requiring two fragmentations to occur to produce the internal fragment ions.
+In comparison, the internal fragment ions for the same peptide sequence 'PEPTIDE' are shown below. The internal 
+fragment ions for each 'b' ion are denoted in parentheses. Notice the shift in the pattern of fragmentation, now 
+requiring two fragmentations to occur to produce the internal fragment ions.
 ```
 b1 - P ()
 b2 - PE (E)
@@ -139,31 +151,32 @@ b7 - PEPTIDE (EPTIDE, PTIDE, TIDE, IDE, DE, E)
 HELP = """
 # Help
 
-The **Peptide Fragmenter** application is a tool for in silico fragmentation of peptide sequences. The app takes an amino acid sequence and calculates the fragment ions for a given charge range. 
+The **Peptide Fragmenter** application is a tool for in silico fragmentation of peptide sequences. The app takes an 
+amino acid sequence and calculates the fragment ions for a given charge range. 
 
-## Input
+The input sequence should be a valid amino acid sequence, with no additional characters or spaces. The sequence can
+contain the following amino acids: ARNDCEQGHILKMFPSTWYVJX. Ambiguous amino acids
+like B, Z are not supported. Proforma notation also
+supports ambiguity of the sequence and modifications. Since the app is designed for fragmentation, the sequence 
+must not contain any ambiguity.
 
-- **Peptide Sequence**: This is the amino acid sequence to be fragmented. The sequence can include modification masses in parentheses. For example, (-3.14)PEP(123.456)TIDE contains a -3.14 N-Term modification and a 123.456 modification on the second Proline (P). The length of the peptide sequence cannot exceed 50 amino acids.
+## Supported ProForma Features
 
-- **Charge Range**: Define the minimum and maximum charges for fragmentation. The minimum charge must be less than or equal to the maximum charge. 
+| Feature                                       | Example                                   | Section  |
+|-----------------------------------------------|-------------------------------------------|----------|
+| CV/ontology modification names                | EM[Oxidation]EVEES[Phospho]PEK            | 4.2.1    |
+| CV/ontology protein modification accession numbers | EM[MOD:00719]EVEES[MOD:00046]PEK     | 4.2.2    |
+| Delta mass notation for modifications         | EM[+15.9949]EVEES[+79.9663]PEK            | 4.2.6    |
+| Specifying a gap of known mass                | RTAAX[+367.0537]WT                        | 4.2.7    |
+| Support for elemental formulas                | SEQUEN[Formula\:C12H20O2]CE                | 4.2.8    |
+| Glycan composition                            | SEQUEN[Glycan\:HexNAc1Hex2]CE              | 4.2.9    |
+| N-terminal and C-terminal modifications       | [iTRAQ4plex]-EMEVNESPEK-[+100]                   | 4.3.1    |
+| Labile modifications                          | {Glycan\:Hex}EMEVNESPEK                    | 4.3.2    |
+| Isotopes                                      | <13C>ATPEILTVNSIGQLK                      | 4.6.1    |
+| Fixed protein modifications                   | <[MOD:01090]@C>ATPEILTCNSIGCLK            | 4.6.2    |
+| Information tag                               | ELVIS[Phospho\|INFO\:newly discovered]K     | 4.8      |
+| Joint representation of experimental data and interpretation | ELVIS[Phospho\|Obs\:+79.978]K         | 4.9      |
 
-- **Mass Type**: Choose between 'monoisotopic' or 'average' mass type to use for fragment calculation.
+For more information, please visit the [Proteomics Standards Initiative (PSI) website](https://www.psidev.info/proforma).
 
-- **Fragment Types**: Select the types of fragments to calculate: 'a', 'b', 'c', 'x', 'y', 'z'. 
-
-## Outputs
-
-- **Results Tab**: This tab presents the calculated fragment ions in a table, and a plot that shows the fragment segments in a sequence versus mass plot. You can download the fragment ion data as a CSV file.
-
-- **Wiki Tab**: This tab presents a wiki page with general information on peptide fragmentation.
-
-- **Help Tab**: This tab presents a help page on how to use the application.
-
-If you encounter any issues or have suggestions for improvement, please contact pgarrett@scripps.edu.
-
-This is a work in progress and your feedback is greatly appreciated!
-
-## Some Modifications
-
-https://web.expasy.org/findmod/findmod_masses.html
 """

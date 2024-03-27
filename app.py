@@ -1,14 +1,13 @@
+import json
 from typing import List, Tuple
 
 import pandas as pd
-import peptacular.constants
 import streamlit as st
-from peptacular.fragment import build_fragments
-from peptacular.sequence import strip_modifications, get_modifications
+import peptacular as pt
 import plotly.graph_objects as go
 
 from constants import *
-from utils import COLOR_DICT, is_float, get_fragment_color
+from utils import COLOR_DICT, get_fragment_color
 
 # Parse query parameters
 params = st.query_params
@@ -16,25 +15,40 @@ query_peptide_sequence = params.get('sequence', DEFAULT_PEPTIDE)
 query_min_charge = int(params.get('min_charge', DEFAULT_MIN_CHARGE))
 query_max_charge = int(params.get('max_charge', DEFAULT_MAX_CHARGE))
 query_mass_type = params.get('mass_type', DEFAULT_MASS_TYPE)
-query_fragment_types = list(params.get('fragment_types', DEFAULT_FRAGMENT_TYPES))
+query_fragment_types = list(params.get('fragment_types', DEFAULT_FRAGMENT_TYPES).split(';'))
+
+# Initialize session state for fragment types if it doesn't exist (page refresh)
+if 'fragment_types' not in st.session_state:
+    st.session_state.fragment_types = query_fragment_types
 
 st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:", layout="wide")
 
 # Sidebar: Peptide Fragmenter input
 with st.sidebar:
     st.title('Peptide Fragmenter :bomb:')
-    st.markdown(
-        """A simple peptide fragment ion claculator. Specify terminal PTMs with [] and internal PTMs with ()."""
-    )
-
-    st.markdown('Note that B, X, and Z residues have a mass of 0.0 Da.')
+    st.markdown("""
+    A simple peptide fragment ion claculator. Now ProForma 2.0 compliant!
+    
+    See the help tab for more information on supported ProForma features.
+    """
+                )
 
     peptide_sequence = st.text_input('Peptide Sequence',
                                      value=query_peptide_sequence,
                                      max_chars=MAX_PEPTIDE_LENGTH,
-                                     help='Peptide sequence to fragment. Include modification masses in parentheses.')
-    peptide_len = len(strip_modifications(peptide_sequence))
-    st.caption(f'Residues: {peptide_len}/{MAX_PEPTIDE_AA_COUNT}')
+                                     help='Peptide sequence to fragment. Include modifications in square brackets.')
+
+    apply_carbamidomethyl = st.checkbox('Use carbamidomethyl', value=False, help='Apply carbamidomethyl mod')
+
+    if apply_carbamidomethyl:
+        mod = '<[Carbamidomethyl]@C>'
+        peptide_sequence = mod + peptide_sequence
+
+    peptide_sequence.strip()
+    peptide_len = len(pt.strip_mods(peptide_sequence))
+
+    c1, c2 = st.columns(2)
+    c1.caption(f'Residues: {peptide_len}/{MAX_PEPTIDE_AA_COUNT}')
 
     # Check peptide AA count is within limits
     if peptide_len > MAX_PEPTIDE_AA_COUNT:
@@ -42,17 +56,25 @@ with st.sidebar:
         st.stop()
 
     # Verify the input sequence is valid
-    unmodified_sequence = strip_modifications(peptide_sequence)
+    unmodified_sequence = pt.strip_mods(peptide_sequence)
     additional_aa = {'B', 'X', 'Z'}
-    valid_aa = additional_aa.union(peptacular.constants.AMINO_ACIDS)
+    valid_aa = additional_aa.union(pt.AMINO_ACIDS)
     if not all(valid_aa for aa in unmodified_sequence):
         st.error(f'Invalid amino acid(s) detected.')
         st.stop()
 
-    # verify modifications are valid
-    mod_dict = get_modifications(peptide_sequence)
-    if not all(is_float(mod) for mod in mod_dict.values()):
-        st.error('Invalid modification mass detected.')
+    try:
+        neutral_sequence_mass = pt.mass(peptide_sequence, monoisotopic=True, ion_type='p', charge=0)
+    except Exception as e:
+        st.error(f'Error calculating peptide mass: {e}')
+        st.stop()
+
+    c2.caption(f'Neutral Mass: {neutral_sequence_mass:.5f}')
+
+    stripped_sequence, mods = pt.pop_mods(peptide_sequence)
+
+    if '(' in stripped_sequence or ')' in stripped_sequence or 'u' in mods:
+        st.error('Sequence cannot contain ambiguity!')
         st.stop()
 
     if peptide_len == 0:
@@ -83,47 +105,142 @@ with st.sidebar:
                          horizontal=True)
     is_monoisotopic = mass_type == 'monoisotopic'
 
-    fragment_types = st.multiselect(label='Fragment Types',
-                                    options=['a', 'b', 'c', 'x', 'y', 'z'],
-                                    default=query_fragment_types,
-                                    help='Fragment types to calculate')
+    st.caption('Terminal Ions')
+
+    c1, c2, c3 = st.columns(3)
+    a, b, c = c1.checkbox('a', value='a' in st.session_state.fragment_types), \
+        c2.checkbox('b', value='b' in st.session_state.fragment_types), \
+        c3.checkbox('c', value='c' in st.session_state.fragment_types)
+    c1, c2, c3 = st.columns(3)
+    x, y, z = c1.checkbox('x', value='x' in st.session_state.fragment_types), \
+        c2.checkbox('y', value='y' in st.session_state.fragment_types), \
+        c3.checkbox('z', value='z' in st.session_state.fragment_types)
+
+    internal_ions = st.checkbox('Internal Ions', value=False)
+
+    ax, ay, az = False, False, False
+    bx, by, bz = False, False, False
+    cx, cy, cz = False, False, False
+    if internal_ions:
+        c1, c2, c3 = st.columns(3)
+        ax, ay, az = c1.checkbox('ax', value='ax' in st.session_state.fragment_types), \
+            c2.checkbox('ay', value='ay' in st.session_state.fragment_types), \
+            c3.checkbox('az', value='az' in st.session_state.fragment_types)
+        c1, c2, c3 = st.columns(3)
+        bx, by, bz = c1.checkbox('bx', value='bx' in st.session_state.fragment_types), \
+            c2.checkbox('by', value='by' in st.session_state.fragment_types), \
+            c3.checkbox('bz', value='bz' in st.session_state.fragment_types)
+        c1, c2, c3 = st.columns(3)
+        cx, cy, cz = c1.checkbox('cx', value='cx' in st.session_state.fragment_types), \
+            c2.checkbox('cy', value='cy' in st.session_state.fragment_types), \
+            c3.checkbox('cz', value='cz' in st.session_state.fragment_types)
+
+    c1, c2 = st.columns(2)
+    deselected_all = c1.button(label='Deselect All', use_container_width=True)
+    select_all = c2.button(label='Select All', use_container_width=True)
+
+    if deselected_all:
+        st.session_state.fragment_types = []
+        st.experimental_rerun()
+    if select_all:
+        st.session_state.fragment_types = list(set(st.session_state.fragment_types + ['a', 'b', 'c', 'x', 'y', 'z']))
+        st.experimental_rerun()
+
+    fragment_types = []
+
+    if a:
+        fragment_types.append('a')
+
+    if b:
+        fragment_types.append('b')
+
+    if c:
+        fragment_types.append('c')
+
+    if x:
+        fragment_types.append('x')
+
+    if y:
+        fragment_types.append('y')
+
+    if z:
+        fragment_types.append('z')
+
+    if ax:
+        fragment_types.append('ax')
+
+    if ay:
+        fragment_types.append('ay')
+
+    if az:
+        fragment_types.append('az')
+
+    if bx:
+        fragment_types.append('bx')
+
+    if by:
+        fragment_types.append('by')
+
+    if bz:
+        fragment_types.append('bz')
+
+    if cx:
+        fragment_types.append('bx')
+
+    if cy:
+        fragment_types.append('cy')
+
+    if cz:
+        fragment_types.append('cz')
+
+    # update session state
+    st.session_state.fragment_types = fragment_types
 
 
 def generate_app_url(sequence: str, min_charge: int, max_charge: int, mass_type: str, fragment_types: List[str]):
     # Generate the app URL
-    url = f'{BASE_URL}?sequence={sequence}&min_charge={min_charge}&max_charge={max_charge}&mass_type={mass_type}&fragment_types={"".join(fragment_types)}'
+    url = f'{BASE_URL}?sequence={sequence}&min_charge={min_charge}&max_charge={max_charge}&mass_type={mass_type}&fragment_types={";".join(fragment_types)}'
     return url
 
 
 url = generate_app_url(peptide_sequence, min_charge, max_charge, mass_type, fragment_types)
 
+# set query params
+
 st.write(f'##### [Analysis URL]({url}) (copy me and send to your friends!)')
 
 t1, t3, t4 = st.tabs(['Results', 'Wiki', 'Help'])
 
+# remove global mods
+mods.pop('l', [])
+mods.pop('u', [])
+mods.pop('s', [])
+mods.pop('i', [])
+sequence = pt.add_mods(stripped_sequence, mods)
+components = pt.split(sequence)
+
+
 @st.cache_data
-def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int], monoisotopic: bool,
-                          internal: bool) -> Tuple[List, pd.DataFrame]:
-    fragments = build_fragments(sequence=sequence,
-                                ion_types=ion_types,
-                                charges=charges,
-                                monoisotopic=monoisotopic,
-                                internal=internal,
-                                aa_masses={aa : 0.0 for aa in additional_aa},)
+def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int], monoisotopic: bool) -> Tuple[
+    List, pd.DataFrame]:
+    fragments = pt.fragment(sequence=sequence,
+                         ion_types=ion_types,
+                         charges=charges,
+                         monoisotopic=monoisotopic)
+
+    seq_len = pt.sequence_length(sequence)
 
     # convert list of dataclasses to list of dicts
-    frag_df = pd.DataFrame([fragment.__dict__ for fragment in fragments])
-    frag_df['start'] = [fragment.start for fragment in fragments]
-    frag_df['end'] = [fragment.end for fragment in fragments]
-    frag_df['label'] = [fragment.label.replace('*', '+') for fragment in fragments]
-    frag_df['mz'] = [fragment.mz for fragment in fragments]
+    frag_df = pd.DataFrame([fragment.to_dict() for fragment in fragments])
 
-    #  for all ends that are negative add seq_len
-    frag_df.loc[frag_df['end'] < 0, 'end'] += len(unmodified_sequence)
-    frag_df.loc[frag_df['start'] < 0, 'start'] += len(unmodified_sequence)
+    frag_df['number'] = None
+    # for forward ions (a,b,c) set number to frag.end
+    frag_df['number'] = frag_df.apply(lambda row: row['end'] if row['ion_type'] in 'abc' else None, axis=1)
 
-    # where end is None, set to seq_len
-    frag_df.loc[frag_df['end'].isna(), 'end'] = len(unmodified_sequence)
+    # for reverse ions (x,y,z) set number to frag.start
+    frag_df['number'] = frag_df.apply(lambda row: seq_len - row['start'] if row['ion_type'] in 'xyz' else row['number'],
+                                      axis=1)
+
     return fragments, frag_df
 
 
@@ -131,18 +248,29 @@ def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int
 fragments, frag_df = create_fragment_table(sequence=peptide_sequence,
                                            ion_types=fragment_types,
                                            charges=list(range(min_charge, max_charge + 1)),
-                                           monoisotopic=is_monoisotopic,
-                                           internal=False)
+                                           monoisotopic=is_monoisotopic)
+
+if len(frag_df) == 0:
+    st.warning('No fragments found. Please check your input and try again.')
+    st.stop()
+
+# drop isotope, loss and parent_sequence columns
+frag_df = frag_df.drop(columns=['isotope', 'loss', 'parent_sequence'])
+
+# sort by ion_type, then start
+frag_df.sort_values(by=['charge', 'ion_type', 'start'], inplace=True)
+
+# drop any duplicates
+frag_df.drop_duplicates(subset=['charge', 'ion_type', 'start', 'end'], inplace=True)
 
 frag_df_downloaded = frag_df.to_csv(index=False)
 
-
 traces = []
 seen = set()
-for idx, row in frag_df[frag_df['internal'] == False].iterrows():
+for idx, row in frag_df.iterrows():
 
     # Determine the Scatter object based on the condition
-    if row['ion_type'] in 'abc':
+    if row['ion_type'] in {'a', 'b', 'c'}:
         scatter = go.Scatter(
             x=[row['mz'], row['mz']],
             y=[row['start'], row['end']],
@@ -153,10 +281,20 @@ for idx, row in frag_df[frag_df['internal'] == False].iterrows():
             showlegend=row['ion_type'] not in seen
 
         )
+    elif row['ion_type'] in {'x', 'y', 'z'}:
+        scatter = go.Scatter(
+            x=[row['mz'], row['mz']],
+            y=[row['start'] + 1, row['end'] + 1],
+            mode='lines',
+            line=dict(color=get_fragment_color(row)),
+            name=row['ion_type'],
+            legendgroup=row['ion_type'],
+            showlegend=row['ion_type'] not in seen
+        )
     else:
         scatter = go.Scatter(
             x=[row['mz'], row['mz']],
-            y=[row['start']+1, row['end']+1],
+            y=[row['start'] + 1, row['end'] + 1],
             mode='lines',
             line=dict(color=get_fragment_color(row)),
             name=row['ion_type'],
@@ -179,26 +317,40 @@ x_range = [min_x - padding, max_x + padding]
 
 # Create layout for the plot with updated x-axis range
 layout = go.Layout(
-    title="Fragment Segments",
+    title={
+        'text': 'Fragment Segments',
+        'x': 0.5,
+        'xanchor': 'center',
+        'font': {'size': 20}
+    },
     xaxis=dict(title='M/Z', range=x_range),
     yaxis=dict(title='Sequence'),
     showlegend=True
 )
 
-# Create a Figure and add the traces
-fig = go.Figure(data=traces, layout=layout)
-fig.update_yaxes(ticktext=['N-Term']+list(unmodified_sequence)+['C-Term'], tickvals=list(range(len(unmodified_sequence)+2)))
+ion_graph = go.Figure(data=traces, layout=layout)
+ion_graph.update_yaxes(ticktext=[''] + components + [''],
+                       tickvals=list(range(len(unmodified_sequence) + 2)))
 
 dfs = []
-combined_data = {'AA': list(unmodified_sequence)}
+jsons = []
+
+combined_data = {'AA': components}
 for charge in range(min_charge, max_charge + 1):
-    data = {'AA': list(unmodified_sequence)}
+    data = {'AA': components}
+    json_data = {'AA': components, 'info': {'charge': charge, 'sequence': peptide_sequence, 'mass_type': mass_type}}
     for ion_type in sorted(fragment_types):
+
+        if ion_type not in {'a', 'b', 'c', 'x', 'y', 'z'}:
+            continue
+
         ion_df = frag_df[
-            (frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge) & (frag_df['internal'] == False)]
+            (frag_df['ion_type'] == ion_type) & (frag_df['charge'] == charge)]
         ion_df.sort_values(by=['number'], inplace=True)
 
         frags = ion_df['mz'].tolist()
+
+        json_data[ion_type] = frags
 
         if ion_type in 'xyz':
             frags = frags[::-1]
@@ -206,6 +358,8 @@ for charge in range(min_charge, max_charge + 1):
         data[ion_type] = frags
 
         combined_data[ion_type + str(charge)] = frags
+
+    jsons.append(json.dumps(json_data))
 
     # Displaying the table
     df = pd.DataFrame(data)
@@ -230,43 +384,154 @@ for charge in range(min_charge, max_charge + 1):
     # reorder columns so that # is first # +1 is last and AA is in the middle
     dfs.append(df)
 
+
+# Function to generate color array for cell text based on ion types
+def generate_text_color_array(df, color_dict):
+    # Initialize a list of lists (each sublist corresponds to a column in df)
+    color_array = []
+    for col in df.columns:
+        if col in color_dict:
+            # Apply the specific color for the column
+            color_array.append([color_dict[col]] * len(df))
+        else:
+            # Default color
+            color_array.append(['black'] * len(df))
+    return color_array
+
+
+# Function to generate background color array for cells
+def generate_bg_color_array(df):
+    bg_color_array = []
+    for col in df.columns:
+        if df[col].dtype.kind in 'f':  # Assuming fragment ion masses are stored in float columns
+            # Set background color to white for fragment ion mass columns
+            bg_color_array.append(['white'] * len(df))
+        else:
+            # Default background color for other columns
+            bg_color_array.append(['white'] * len(df))
+    return bg_color_array
+
+
+number_of_rows = len(dfs[0])  # Assuming dfs[0] is your DataFrame
+cell_height = 25  # As set in the cells dictionary
+header_height = 30  # An estimate, adjust based on your header size
+margin = 80  # Adjust as needed for title, padding, etc.
+
+# Calculate total figure height
+total_height = (number_of_rows * cell_height) + header_height + margin
+
+# Now, create Plotly tables for each DataFrame in dfs
+figs = []
+for df, charge in zip(dfs, range(min_charge, max_charge + 1)):
+    # Format numeric values to 3 decimal places
+    formatted_cell_values = []
+    for col in df.columns:
+        if df[col].dtype.kind in 'f':  # Check if column is float or integer
+            formatted_cell_values.append(df[col].map('{:.5f}'.format).tolist())  # Format to 3 decimal places
+        else:
+            formatted_cell_values.append(df[col].tolist())
+
+    header_values = list(df.columns)
+
+    # capitalize the ion types:
+    header_values = [col.upper() if col in COLOR_DICT else col for col in header_values]
+
+    cell_values = formatted_cell_values
+    text_colors = generate_text_color_array(df, COLOR_DICT)
+    # Generate the background color array for cells
+    bg_colors = generate_bg_color_array(df)
+
+    widths = [100] * len(df.columns)
+    widths[0] = 20
+    widths[-1] = 20
+
+    fig = go.Figure(data=[go.Table(
+        header=dict(values=header_values,
+                    fill_color='white',
+                    align='center',
+                    font=dict(color=text_colors, size=16),
+                    height=header_height,
+                    line=dict(color='black', width=0)),  # Header font color
+        cells=dict(values=cell_values,
+                   fill=dict(color=bg_colors),  # Example cell colors, adjust as needed
+                   align='center',
+                   font=dict(color=text_colors, size=13),
+                   height=cell_height,
+                   line=dict(color='black', width=0),  # Make header lines invisible
+                   ),
+        columnwidth=widths,
+    )])
+
+    fig.update_layout(
+        title={
+            'text': f'{peptide_sequence} | +{charge} | {mass_type}',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 15}
+        },
+        height=total_height,
+        margin=dict(l=80, r=80, t=70, b=10)
+    )
+    # Centered Text
+    figs.append(fig)
+
 combined_df = pd.DataFrame(combined_data)
 # sort columns based on alphabetical order
 combined_df = combined_df.reindex(sorted(combined_df.columns), axis=1)
 
-styled_dfs = []
-
-def highlight_cells(data):
-    # Initialize empty DataFrame with same index and columns as original
-    styled = pd.DataFrame('', index=data.index, columns=data.columns)
-
-    # Iterate over cells and update `styled` based on cell position
-    for row in data.index:
-        for col in data.columns:
-            if col == 'AA' or col == '+#' or col == '-#':
-                styled.loc[
-                    row, col] = f'background-color: gainsboro; color: black; text-align: center; font-weight: bold;'
-                continue
-
-            styled.loc[
-                row, col] = f'color: {COLOR_DICT[col]}; text-align: center;'
-
-    return styled
-
-for df in dfs:
-    styled_df = df.style.format(precision=4).apply(highlight_cells, axis=None)
-    styled_dfs.append(styled_df)
-
+is_monoisotopic = mass_type == 'monoisotopic'
 with t1:
-    for styled_df, charge in zip(styled_dfs, list(range(min_charge, max_charge + 1))):
-        st.subheader(f'Charge {charge}')
-        st.dataframe(styled_df, height=(len(dfs[0]) + 1) * 35 + 3, hide_index=True)
+    st.markdown(f'<h4><center>{peptide_sequence}</center></h4>', unsafe_allow_html=True)
 
-    st.plotly_chart(fig, use_container_width=True)
+    # Mass Table
+    # st.markdown('<h5><center>Peptide Mass</center></h5>', unsafe_allow_html=True)
 
-    frag_df.drop(columns=['parent_number', 'isotope', 'loss', 'aa_masses', 'parent_sequence', 'internal'], inplace=True)
+    c1, c2 = st.columns(2)
+    for c in range(min_charge, max_charge + 1):
 
+        precursor_mass = pt.mass(sequence=peptide_sequence, charge=c, monoisotopic=is_monoisotopic, ion_type='p')
+        if c == 0:
+            c1.markdown(f'<h6><center>(M)  {precursor_mass:.5f}</center></h6>', unsafe_allow_html=True)
+        else:
+            c1.markdown(f'<h6><center>(M+{c}H)<sup>+{c}</sup>  {precursor_mass:.5f}</center></h6>',
+                        unsafe_allow_html=True)
+
+    for c in range(min_charge, max_charge + 1):
+        comp, delta_mass = pt.comp_mass(sequence=peptide_sequence, ion_type='p', charge=c)
+
+        chem_formula = ' '.join([f'{e}({comp[e]})' for e in comp])
+
+        if c == 0:
+            c2.markdown(f'<h6><center>(M) + ΔMass: {chem_formula} + {delta_mass:.4f} Da</center></h6>', unsafe_allow_html=True)
+        else:
+            # st.markdown(f'<h5><center>Neutral Composition + Delta Mass</center></h5>', unsafe_allow_html=True)
+            c2.markdown(f'<h6><center>(M+{c}H) + ΔMass: {chem_formula} + {delta_mass:.4f} Da</cenrter></h6>', unsafe_allow_html=True)
+
+    st.markdown('---')
+
+    st.markdown('<h5><center>Fragment Ions</center></h5>', unsafe_allow_html=True)
+    for c, (fig, j) in enumerate(zip(figs, jsons), min_charge):
+        # Set figure layout to adjust height (and width if necessary)
+        st.plotly_chart(fig, use_container_width=True)
+        st.json(j, expanded=False)
+        #st.markdown(fig.to_html(), unsafe_allow_html=True)
+
+    # Create a Figure and add the traces
+    st.markdown('---')
+
+    st.plotly_chart(ion_graph, use_container_width=True)
+
+    st.markdown('---')
+
+    # center
+    st.markdown('<h5><center>Fragment Data</center></h5>', unsafe_allow_html=True)
+
+    # Display the table
     st.dataframe(frag_df, use_container_width=True)
+
+    # download
+    st.download_button(label="Download Fragment Ions", data=frag_df_downloaded, file_name='fragment_ions.csv',
+                       mime='text/csv', use_container_width=True)
 
 with t3:
     st.markdown(WIKI)
