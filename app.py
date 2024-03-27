@@ -207,7 +207,7 @@ url = generate_app_url(peptide_sequence, min_charge, max_charge, mass_type, frag
 
 # set query params
 
-st.write(f'##### [Analysis URL]({url}) (copy me and send to your friends!)')
+st.write(f'##### :link: [Sharable URL]({url})')
 
 t1, t3, t4 = st.tabs(['Results', 'Wiki', 'Help'])
 
