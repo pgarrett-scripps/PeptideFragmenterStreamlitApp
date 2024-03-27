@@ -26,58 +26,48 @@ st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:", layout="w
 # Sidebar: Peptide Fragmenter input
 with st.sidebar:
     st.title('Peptide Fragmenter :bomb:')
-    st.markdown("""
+    st.caption("""
     A simple peptide fragment ion claculator. Now ProForma 2.0 compliant!
     
     See the help tab for more information on supported ProForma features.
-    """
-                )
+    """)
+
+    st.caption('Made with [peptacular](https://pypi.org/project/peptacular/)')
 
     peptide_sequence = st.text_input('Peptide Sequence',
                                      value=query_peptide_sequence,
                                      max_chars=MAX_PEPTIDE_LENGTH,
-                                     help='Peptide sequence to fragment. Include modifications in square brackets.')
+                                     help='Peptide sequence to fragment. Include modifications in square brackets.').strip()
+
+    annotation = pt.parse(peptide_sequence)
 
     apply_carbamidomethyl = st.checkbox('Use carbamidomethyl', value=False, help='Apply carbamidomethyl mod')
 
-    if apply_carbamidomethyl:
-        mod = '<[Carbamidomethyl]@C>'
-        peptide_sequence = mod + peptide_sequence
-
-    peptide_sequence.strip()
-    peptide_len = len(pt.strip_mods(peptide_sequence))
+    if apply_carbamidomethyl is True:
+        static_mod = '[Carbamidomethyl]@C'
+        annotation.add_static_mods(static_mod)
 
     c1, c2 = st.columns(2)
-    c1.caption(f'Residues: {peptide_len}/{MAX_PEPTIDE_AA_COUNT}')
+    c1.caption(f'Residues: {len(annotation)}/{MAX_PEPTIDE_AA_COUNT}')
 
     # Check peptide AA count is within limits
-    if peptide_len > MAX_PEPTIDE_AA_COUNT:
+    if len(annotation) > MAX_PEPTIDE_AA_COUNT:
         st.error(f'Peptide length cannot exceed {MAX_PEPTIDE_AA_COUNT} amino acids')
         st.stop()
 
-    # Verify the input sequence is valid
-    unmodified_sequence = pt.strip_mods(peptide_sequence)
-    additional_aa = {'B', 'X', 'Z'}
-    valid_aa = additional_aa.union(pt.AMINO_ACIDS)
-    if not all(valid_aa for aa in unmodified_sequence):
-        st.error(f'Invalid amino acid(s) detected.')
-        st.stop()
-
     try:
-        neutral_sequence_mass = pt.mass(peptide_sequence, monoisotopic=True, ion_type='p', charge=0)
+        neutral_sequence_mass = pt.mass(annotation, monoisotopic=True, ion_type='p', charge=0)
     except Exception as e:
         st.error(f'Error calculating peptide mass: {e}')
         st.stop()
 
     c2.caption(f'Neutral Mass: {neutral_sequence_mass:.5f}')
 
-    stripped_sequence, mods = pt.pop_mods(peptide_sequence)
-
-    if '(' in stripped_sequence or ')' in stripped_sequence or 'u' in mods:
+    if annotation.contains_sequence_ambiguity() or annotation.contains_residue_ambiguity() or annotation.contains_mass_ambiguity():
         st.error('Sequence cannot contain ambiguity!')
         st.stop()
 
-    if peptide_len == 0:
+    if len(annotation) == 0:
         st.error('Peptide sequence cannot be empty')
         st.stop()
 
@@ -203,22 +193,13 @@ def generate_app_url(sequence: str, min_charge: int, max_charge: int, mass_type:
     return url
 
 
-url = generate_app_url(peptide_sequence, min_charge, max_charge, mass_type, fragment_types)
+url = generate_app_url(annotation.serialize(), min_charge, max_charge, mass_type, fragment_types)
 
 # set query params
 
 st.write(f'##### :link: [Sharable URL]({url})')
 
 t1, t3, t4 = st.tabs(['Results', 'Wiki', 'Help'])
-
-# remove global mods
-mods.pop('l', [])
-mods.pop('u', [])
-mods.pop('s', [])
-mods.pop('i', [])
-sequence = pt.add_mods(stripped_sequence, mods)
-components = pt.split(sequence)
-
 
 @st.cache_data
 def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int], monoisotopic: bool) -> Tuple[
@@ -245,7 +226,7 @@ def create_fragment_table(sequence: str, ion_types: List[str], charges: List[int
 
 
 # Get all fragment ions
-fragments, frag_df = create_fragment_table(sequence=peptide_sequence,
+fragments, frag_df = create_fragment_table(sequence=annotation.serialize(),
                                            ion_types=fragment_types,
                                            charges=list(range(min_charge, max_charge + 1)),
                                            monoisotopic=is_monoisotopic)
@@ -328,17 +309,18 @@ layout = go.Layout(
     showlegend=True
 )
 
+components = list(annotation.sequence)
 ion_graph = go.Figure(data=traces, layout=layout)
 ion_graph.update_yaxes(ticktext=[''] + components + [''],
-                       tickvals=list(range(len(unmodified_sequence) + 2)))
+                       tickvals=list(range(len(annotation) + 2)))
 
 dfs = []
 jsons = []
 
-combined_data = {'AA': components}
+combined_data = {'AA': list(components)}
 for charge in range(min_charge, max_charge + 1):
     data = {'AA': components}
-    json_data = {'AA': components, 'info': {'charge': charge, 'sequence': peptide_sequence, 'mass_type': mass_type}}
+    json_data = {'AA': components, 'info': {'charge': charge, 'sequence': annotation.serialize(), 'mass_type': mass_type}}
     for ion_type in sorted(fragment_types):
 
         if ion_type not in {'a', 'b', 'c', 'x', 'y', 'z'}:
@@ -464,7 +446,7 @@ for df, charge in zip(dfs, range(min_charge, max_charge + 1)):
 
     fig.update_layout(
         title={
-            'text': f'{peptide_sequence} | +{charge} | {mass_type}',
+            'text': f'{annotation.serialize()} | +{charge} | {mass_type}',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 15}
@@ -481,7 +463,7 @@ combined_df = combined_df.reindex(sorted(combined_df.columns), axis=1)
 
 is_monoisotopic = mass_type == 'monoisotopic'
 with t1:
-    st.markdown(f'<h4><center>{peptide_sequence}</center></h4>', unsafe_allow_html=True)
+    st.markdown(f'<h4><center>{annotation.serialize()}</center></h4>', unsafe_allow_html=True)
 
     # Mass Table
     # st.markdown('<h5><center>Peptide Mass</center></h5>', unsafe_allow_html=True)
@@ -489,7 +471,7 @@ with t1:
     c1, c2 = st.columns(2)
     for c in range(min_charge, max_charge + 1):
 
-        precursor_mass = pt.mass(sequence=peptide_sequence, charge=c, monoisotopic=is_monoisotopic, ion_type='p')
+        precursor_mass = pt.mass(sequence=annotation, charge=c, monoisotopic=is_monoisotopic, ion_type='p')
         if c == 0:
             c1.markdown(f'<h6><center>(M)  {precursor_mass:.5f}</center></h6>', unsafe_allow_html=True)
         else:
@@ -497,7 +479,7 @@ with t1:
                         unsafe_allow_html=True)
 
     for c in range(min_charge, max_charge + 1):
-        comp, delta_mass = pt.comp_mass(sequence=peptide_sequence, ion_type='p', charge=c)
+        comp, delta_mass = pt.comp_mass(sequence=annotation, ion_type='p', charge=c)
 
         chem_formula = ' '.join([f'{e}({comp[e]})' for e in comp])
 
