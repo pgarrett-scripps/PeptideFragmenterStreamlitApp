@@ -45,107 +45,74 @@ DEFAULT_SPECTRA = '283.751526:6.493506;287.601379:11.096813;295.031097:2.801403;
 BASE_URL = get_env_str('BASE_URL', 'http://localhost:8501')
 
 WIKI = """
+# Peptide Fragmentation  
+  
+### Introduction  
+  
+Peptide fragmentation refers to the process by which peptides are broken into smaller fragments. This process occurs within the mass spectrometer and provides useful information regarding the peptide's sequence and structure. Peptide fragmentation can be induced by a number of methods, such as: collision-induced dissociation (CID), electron-transfer dissociation (ETD), and/or higher-energy collisional dissociation (HCD). These techniques effectively add energy to peptides, inducing their dissociation into smaller fragments.
 
-# Peptide Fragmentation
+The fragmentation patterns observed are remarkably consistent, yet pose significant challenges for accurate modeling. Such patterns are influenced by multiple factors, including the applied collision energy, the peptide's charge state, the specific collision method employed, and the composition and sequence of the peptide's amino acids.
 
-## Introduction
+Despite the complexity inherent in predicting fragmentation patterns, advancements in deep learning have markedly improved these predictions, achieving near-perfect accuracy in some cases. This success highlights deep learning's potential in capturing the complex interdependencies and nuanced dynamics governing peptide fragmentation, significantly outperforming traditional algorithmic prediction methods.
+  
+### Peptides
+  
+A peptide is a chain of amino acids connected by peptide bonds, which are formed between the carboxyl group (-COOH) of one amino acid and the amino group (-NH2) of another. These bonds are established via a dehydration synthesis, a process that releases water molecules during bond formation.  Its also important to highlight that these peptide bonds are the weakest bonds within the peptide, and as such require the least amount of energy to break.
+  
+![image](https://biologydictionary.net/wp-content/uploads/2017/01/Peptide-Bond-Formation.jpg)  
 
-Peptide fragmentation refers to the process by which peptides (short chains of amino acid monomers linked by peptide bonds) are broken into smaller fragments. This occurs during mass spectrometry analysis to provide useful information about the peptide's sequence and structure. The process uses methods such as collision-induced dissociation (CID), electron-transfer dissociation (ETD), or higher-energy collisional dissociation (HCD).
+## Fragmentation
+  
+When peptides undergo fragmentation in mass spectrometry, the process targets specific bonds within the molecule, varying by the chosen fragmentation method. The energy applied causes the peptide to break into smaller fragments. The type of ions produced from this fragmentation depends on where the break occurs within the peptide and which part of the molecule retains the charge. If the charge remains on the N-terminal side of the peptide, the resulting ions are classified as a, b, or c ions. Conversely, if the charge is on the C-terminal side, the ions are identified as x, y, or z ions.
 
-## Basic Concept
+### Terminal Fragment Ions
 
-Before we delve into peptide fragmentation, let's understand a peptide molecule:
+As you can see in the figure below, each fragmentation site produces two complementary ions, which when added together make up the composition of the original peptide sequence (This is only true for the neutral fragments seen below).
+    
+**The fragment sites for all terminal fragment ions:**
 
-A peptide molecule consists of multiple amino acids linked together by peptide bonds. A peptide bond is formed between the carboxyl group (-COOH) of one amino acid and the amino group (-NH2) of another.
+![image](https://www.matrixscience.com/images/cleavages.gif)  
 
-## Fragmentation Process
+The peptide bond is notably the weakest and, therefore, the most likely to break during fragmentation. This breakage predominantly results in the formation of b and y ions. These ions are especially prevalent in Collision-Induced Dissociation (CID) and Higher-energy Collisional Dissociation (HCD), which are classified as soft ionization techniques. In contrast, employing higher energy fragmentation methods, such as Electron Transfer Dissociation (ETD), facilitates the generation of additional types of ions, including c and z ions.
+  
+While the charge state of a original peptide ion is dictated by the presence of protons, the same cannot be said for the fragment ions, a notion often misunderstood. Specifically, the +1 charge state of a, b, x, and y fragment ions results from an electron loss instead of a proton gain. In contrast, for c and y ions, the +1 charge state is achieved by acquiring a hydrogen atom and a proton from their corresponding neutral fragment. For charge states greater than 1, the remaining charges after +1 can be attributed to additional protons. 
+  
+**The structure for all +1 terminal fragment ions:**
 
-When peptides are subjected to fragmentation in mass spectrometry, the peptide bonds are targeted. The energy imparted to the molecule causes these bonds to break, creating different fragment ions. These fragments are typically classified into six types based on the location of the bond break: a, b, and c ions are the N-terminal fragments, and x, y, and z ions are the C-terminal fragments.
+![image](https://www.matrixscience.com/images/abcxyz.gif)     
+  
+### Internal Fragment Ions  
+  
+Internal fragment ions originate when fragmentation occurs at two separate points along the peptide, yielding a fragment that is 'internal' to the peptide's sequence. This process entails the breaking multiple peptide bonds, leading to the creation of a peptide fragment that isn't connected to either the N-terminus or C-terminus. The number of terminal fragment ions grows linearly with the length of the peptides sequence, while the number internal fragment ions grow exponentially  For this reason, internal fragments are typically ignored since they often overcomplicate the interpretation of the spectra. 
+  
+**The structure for a +1 BY internal fragment ion:**
 
-### Example abcxyz Fragment Ions
+![image](https://www.matrixscience.com/images/internal.gif)  
+  
+### Immonium Ions  
+  
+Immonium ions are unique types of fragment ions that consist of just one amino acid. Immonium ions won't tell you how the amino acids are arranged, they can confirm the inclusion of certain amino acids in the spectra.
 
-For example, consider the following peptide sequence: PEPTIDE. It can prodice the the following theoretical fragment ion sequences.
-```
-a/b/c ions start from the front (just like the alphabet)
-1 - P
-2 - PE
-3 - PEP
-4 - PEPT
-5 - PEPTI
-6 - PEPTID
-7 - PEPTIDE
+**The structure for a +1 immonium ion:**
 
-while x/y/z ions start from the back
-1 - E
-2 - DE
-3 - IDE
-4 - TIDE
-5 - PTIDE
-6 - EPTIDE
-7 - PEPTIDE
-```
+![image](https://www.matrixscience.com/images/immonium.gif)  
+  
+## Fragmentation Methods  
+  
+### Collision-Induced Dissociation (CID)  
+  
+CID fragments peptides by accelerating the ions using an electrical field to increase their kinetic energy, then allowing them to collide with neutral molecules (typically helium, nitrogen, or argon). The collision converts kinetic energy to internal energy, causing bonds to break and the molecule to fragmentation into smaller pieces. As previously stated CID is a soft ionization technique and there is only enough energy provided to break the peptide bond. CID produces mainly b and y ions, and sometimes a ions. In general, CID is excellent for generating sequence information for peptides and works well for a broad range of peptides.  
+  
+### Higher-Energy Collisional Dissociation (HCD)  
+  
+In Higher-energy Collisional Dissociation (HCD), the term "higher energy" refers to an increased radiofrequency (RF) voltage applied, not the energy used for fragmentation. The higher RF energy is used to better retain fragment ions. HCD uses a similar collision energy to CID, and as a result also produces mainly b and y ions. 
 
-## Collision-Induced Dissociation (CID)
+### Electron-Transfer Dissociation (ETD)  
+  
+In ETD an electron is transferred to the positively-charged protein or peptide, leading to fragmentation along the peptide backbone. ETD induces more energy into the peptide that CID, and as a result, produces fragments by breaking other bonds in the peptides. ETD commonly results in c and z ions. This method is especially useful for longer and more charged peptides.  
 
-CID is the most commonly used method of peptide fragmentation. In CID, peptides are accelerated in an electric field 
-to give them kinetic energy, and then they collide with a neutral gas molecule, causing them to fragment.
-
-The major fragment ions produced in CID are b and y ions. In general, CID is excellent for generating sequence 
-information for peptides and works well for a broad range of peptides.
-
-## Electron-Transfer Dissociation (ETD)
-
-ETD is a fragmentation method that can preserve post-translational modifications, making it valuable for the study of 
-protein modifications. In ETD, peptides are fragmented by transferring an electron to the peptide, which causes it to 
-break apart.
-
-ETD commonly results in c and z ions. This method is especially useful for longer and more charged peptides.
-
-## Higher-Energy Collisional Dissociation (HCD)
-
-HCD is a hybrid method that uses CID-type fragmentation, but with higher energy. This method generates a broader 
-distribution of ion types and can lead to more complete sequence coverage.
-
-Like CID, HCD commonly results in b and y ions, but with more secondary fragmentation.
-
-## Analysis
-
-The resulting fragment ions are then analyzed by the mass spectrometer. By examining the m/z (mass-to-charge) ratio 
-of the fragment ions, researchers can deduce the amino acid sequence of the original peptide. 
-
-## Understanding Internal Fragment Ions
-
-These ions originate when fragmentation transpires at two separate points along the peptide, yielding a fragment that 
-is 'internal' to the peptide's sequence. This process entails the breaking of not one, but two peptide bonds, leading 
-to the creation of a peptide fragment that isn't connected to either the N-terminus or C-terminus of the original 
-peptide.
-
-### Example Internal Fragmentation
-
-Let's take the peptide sequence 'PEPTIDE' as an example. Here is its 'b' ion series, signifying that all fragment ions 
-originate at the N-terminus:
-```
-b1 - P
-b2 - PE
-b3 - PEP
-b4 - PEPT
-b5 - PEPTI
-b6 - PEPTID
-b7 - PEPTIDE
-```
-In comparison, the internal fragment ions for the same peptide sequence 'PEPTIDE' are shown below. The internal 
-fragment ions for each 'b' ion are denoted in parentheses. Notice the shift in the pattern of fragmentation, now 
-requiring two fragmentations to occur to produce the internal fragment ions.
-```
-b1 - P ()
-b2 - PE (E)
-b3 - PEP (EP, E)
-b4 - PEPT (EPT, PT, T)
-b5 - PEPTI (EPTI, PTI, TI, I)
-b6 - PEPTID (EPTID, PTID, TID, ID, D)
-b7 - PEPTIDE (EPTIDE, PTIDE, TIDE, IDE, DE, E)
-```
-
+### Resources:
+https://www.matrixscience.com/help/fragmentation_help.html
 """
 
 HELP = """
@@ -160,23 +127,5 @@ like B, Z are not supported. Proforma notation also
 supports ambiguity of the sequence and modifications. Since the app is designed for fragmentation, the sequence 
 must not contain any ambiguity.
 
-## Supported ProForma Features
-
-| Feature                                       | Example                                   | Section  |
-|-----------------------------------------------|-------------------------------------------|----------|
-| CV/ontology modification names                | EM[Oxidation]EVEES[Phospho]PEK            | 4.2.1    |
-| CV/ontology protein modification accession numbers | EM[MOD:00719]EVEES[MOD:00046]PEK     | 4.2.2    |
-| Delta mass notation for modifications         | EM[+15.9949]EVEES[+79.9663]PEK            | 4.2.6    |
-| Specifying a gap of known mass                | RTAAX[+367.0537]WT                        | 4.2.7    |
-| Support for elemental formulas                | SEQUEN[Formula\:C12H20O2]CE                | 4.2.8    |
-| Glycan composition                            | SEQUEN[Glycan\:HexNAc1Hex2]CE              | 4.2.9    |
-| N-terminal and C-terminal modifications       | [iTRAQ4plex]-EMEVNESPEK-[+100]                   | 4.3.1    |
-| Labile modifications                          | {Glycan\:Hex}EMEVNESPEK                    | 4.3.2    |
-| Isotopes                                      | <13C>ATPEILTVNSIGQLK                      | 4.6.1    |
-| Fixed protein modifications                   | <[MOD:01090]@C>ATPEILTCNSIGCLK            | 4.6.2    |
-| Information tag                               | ELVIS[Phospho\|INFO\:newly discovered]K     | 4.8      |
-| Joint representation of experimental data and interpretation | ELVIS[Phospho\|Obs\:+79.978]K         | 4.9      |
-
-For more information, please visit the [Proteomics Standards Initiative (PSI) website](https://www.psidev.info/proforma).
-
+Other than a lack of ambiguity, full proforma 2.0 notation is supported.
 """
