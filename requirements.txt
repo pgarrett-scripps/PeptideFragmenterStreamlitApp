@@ -4,3 +4,4 @@ plotly==5.15.0
 peptacular==2.1.0
 numpy==1.25.0
 matplotlib==3.7.2
+streamlit-permalink==0.5.2
