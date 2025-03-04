@@ -63,7 +63,7 @@ with st.sidebar:
                    help=peptide_help_msg,
                    url_key='peptide')
     st.caption(
-        '''Common mods: C[Carbamidomethyl], M[Oxidation], [Acetyl]-, S[Phospho], T[Phospho], Y[Phospho]''')
+        '''Common mods: C[Carbamidomethyl], M[Oxidation], [Acetyl]-''')
 
 
 
@@ -193,8 +193,8 @@ def style_fragment_table(
     color_map: Optional[Dict[str, str]] = None,
     show_borders: bool = True,
     aa_col: Optional[str] = "Seq",
-    pos_col: Optional[str] = "+#",
-    neg_col: Optional[str] = "-#",
+    pos_col: Optional[str] = "#>",
+    neg_col: Optional[str] = "<#",
     caption: Optional[str] = None,
     decimal_places: int = 4,
     row_padding: int = 4,
@@ -390,8 +390,7 @@ except Exception as e:
 center_table(style_df)
 
 if use_mass_bounds:
-    st.markdown(f'**Min:** {min_mz} *m/z* | **Max:** {max_mz} *m/z*')
-
+    st.markdown(f'**Bounds:** {min_mz} - {max_mz} *m/z*')
 
 
 
