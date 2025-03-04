@@ -8,12 +8,12 @@ import streamlit_permalink as stp
 st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:", layout="wide")
 
 # Default values
-DEFAULT_PEPTIDE = 'PEPTIDE'
-DEFAULT_CHARGE = 1
+DEFAULT_PEPTIDE = '[Acetyl]-PEPTIDES[UNIMOD:21]'
+DEFAULT_CHARGE = 2
 DEFAULT_MASS_TYPE = 'monoisotopic'
-DEFAULT_FRAGMENT_TYPES = {'b', 'y'}
+DEFAULT_FRAGMENT_TYPES = {'a','b', 'x', 'y'}
 DEFAULT_USE_MASS_BOUNDS = False
-DEFAULT_MIN_MZ = 200.0
+DEFAULT_MIN_MZ = 150.0
 DEFAULT_MAX_MZ = 2000.0
 DEFAULT_PRECISION = 5
 DEFAULT_ROW_PADDING = 5
@@ -47,9 +47,9 @@ if not st.query_params:
 with st.sidebar:
     st.title('Peptide Fragmenter :bomb:')
     st.caption("""
-    A simple peptide fragment ion claculator. ProForma 2.0 compliant!""")
+    A peptide fragment ion calculator ([ProForma 2.0 compliant](https://github.com/HUPO-PSI/ProForma/blob/master/SpecDocument/ProForma_v2_draft15_February2022.pdf)).""")
 
-    st.caption('Made with [peptacular](https://pypi.org/project/peptacular/)')
+    st.caption('''**This pages URL automatically updates with your input, and can be shared with others.**''')
 
     peptide_help_msg = """
     **Peptide Sequence**: Enter the peptide sequence to fragment. Include modifications in square brackets.
@@ -97,7 +97,7 @@ with st.sidebar:
         st.error(f'Error parsing peptide sequence: {e}')
         st.stop()
 
-    # if contains cheareg state error
+    # if contains chage state error
     if annotation.charge is not None:
         st.error('Peptide sequence cannot contain charge state!')
         st.stop()
@@ -105,6 +105,11 @@ with st.sidebar:
     # Check peptide AA count is within limits
     if len(annotation) > 1000:
         st.error(f'Peptide length cannot exceed {1000} amino acids')
+        st.stop()
+
+    # if contains adduct error
+    if annotation.charge_adducts is not None:
+        st.error('Peptide sequence cannot contain adduct!')
         st.stop()
 
     if annotation.contains_sequence_ambiguity() or annotation.contains_residue_ambiguity() or annotation.contains_mass_ambiguity():
@@ -403,4 +408,5 @@ if use_mass_bounds:
     st.markdown(f'**Bounds:** {min_mz} - {max_mz} *m/z*')
 
 
+st.caption('Made with [peptacular](https://pypi.org/project/peptacular/)')
 
