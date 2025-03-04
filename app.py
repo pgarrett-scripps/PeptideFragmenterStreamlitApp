@@ -5,7 +5,7 @@ import streamlit as st
 import peptacular as pt
 import streamlit_permalink as stp
 
-st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:", layout="wide")
+st.set_page_config(page_title="peptidefragmenter", page_icon=":bomb:", layout="wide", initial_sidebar_state="expanded")
 
 # Default values
 DEFAULT_PEPTIDE = '[Acetyl]-PEPTIDES[UNIMOD:21]'
@@ -407,6 +407,5 @@ center_table(style_df)
 if use_mass_bounds:
     st.markdown(f'**Bounds:** {min_mz} - {max_mz} *m/z*')
 
-
-st.caption('Made with [peptacular](https://pypi.org/project/peptacular/)')
+st.caption(f'Made with [peptacular {pt.__version__}](https://pypi.org/project/peptacular/)')
 
