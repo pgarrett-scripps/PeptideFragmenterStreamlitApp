@@ -16,8 +16,8 @@ DEFAULT_USE_MASS_BOUNDS = False
 DEFAULT_MIN_MZ = 200.0
 DEFAULT_MAX_MZ = 2000.0
 DEFAULT_PRECISION = 5
-DEFAULT_ROW_PADDING = 4
-DEFAULT_COLUMN_PADDING = 10
+DEFAULT_ROW_PADDING = 5
+DEFAULT_COLUMN_PADDING = 15
 DEFAULT_SHOW_BORDERS = False
 DEFAULT_A_COLOR = '#8c564b'
 DEFAULT_B_COLOR = '#1f77b4'
@@ -67,7 +67,7 @@ with st.sidebar:
 
 
 
-    c1, c2 = st.columns([2, 3])
+    c1, c2 = st.columns(2)
 
     with c1:
         charge = stp.number_input('Charge',
@@ -76,20 +76,30 @@ with st.sidebar:
                                  help='Charge state of the peptide',
                                   url_key='charge')
     with c2:
-        mass_type = stp.radio(label='Mass Type',
-                             options=['monoisotopic', 'average'],
-                             help='Mass type to use for fragment calculation',
-                             index=['monoisotopic', 'average'].index(DEFAULT_MASS_TYPE),
-                             horizontal=True,
-                                url_key='mass_type')
+        charge_aduct = stp.text_input('Aduct',
+                                    value='+H',
+                                    help='Adduct to use for charge state calculation',
+                                    url_key='adduct', disabled=True)
 
-        is_monoisotopic = mass_type == 'monoisotopic'
+    mass_type = stp.radio(label='Mass Type',
+                         options=['monoisotopic', 'average'],
+                         help='Mass type to use for fragment calculation',
+                         index=['monoisotopic', 'average'].index(DEFAULT_MASS_TYPE),
+                         horizontal=True,
+                            url_key='mass_type')
+
+    is_monoisotopic = mass_type == 'monoisotopic'
 
 
     try:
         annotation = pt.parse(peptide_sequence)
     except Exception as e:
         st.error(f'Error parsing peptide sequence: {e}')
+        st.stop()
+
+    # if contains cheareg state error
+    if annotation.charge is not None:
+        st.error('Peptide sequence cannot contain charge state!')
         st.stop()
 
     # Check peptide AA count is within limits
@@ -141,10 +151,10 @@ with st.sidebar:
         c1, c2 = st.columns(2)
         with c1:
 
-            row_padding = stp.number_input('Row Padding (px)', value=DEFAULT_ROW_PADDING, min_value=0, max_value=10,
+            row_padding = stp.number_input('Row Padding (px)', value=DEFAULT_ROW_PADDING, min_value=0, max_value=100,
                                            url_key='row_padding')
         with c2:
-            column_padding = stp.number_input('Column Padding (px)', value=DEFAULT_COLUMN_PADDING, min_value=0, max_value=20,
+            column_padding = stp.number_input('Column Padding (px)', value=DEFAULT_COLUMN_PADDING, min_value=0, max_value=100,
                                               url_key='column_padding')
 
         show_borders = stp.checkbox('Show Borders', value=DEFAULT_SHOW_BORDERS, url_key='show_borders')
@@ -345,7 +355,7 @@ frag_colors = {
 }
 
 
-mass_type_abr = 'mono' if is_monoisotopic else 'avg'
+mass_type_abr = 'Monoisotopic' if is_monoisotopic else 'Avgerage'
 
 style_df = style_fragment_table(
     sequence=annotation.serialize(),
@@ -359,7 +369,7 @@ style_df = style_fragment_table(
     min_mass=min_mz,
     max_mass=max_mz,
     color_map=frag_colors,
-    caption=f'<b>{annotation.serialize()}</b> ({mass_type_abr})',
+    caption=f'<b>{annotation.serialize()}</b><br>Mass Type: {mass_type_abr}',
 )
 
 def center_table(val):
