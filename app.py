@@ -13,8 +13,8 @@ DEFAULT_CHARGE = 1
 DEFAULT_MASS_TYPE = 'monoisotopic'
 DEFAULT_FRAGMENT_TYPES = {'b', 'y'}
 DEFAULT_USE_MASS_BOUNDS = False
-DEFAULT_MIN_MASS = 200.0
-DEFAULT_MAX_MASS = 2000.0
+DEFAULT_MIN_MZ = 200.0
+DEFAULT_MAX_MZ = 2000.0
 DEFAULT_PRECISION = 5
 DEFAULT_ROW_PADDING = 4
 DEFAULT_COLUMN_PADDING = 10
@@ -35,8 +35,8 @@ if not st.query_params:
     for ft in DEFAULT_FRAGMENT_TYPES:
         st.query_params[ft] = True
     st.query_params['mass_bounds'] = DEFAULT_USE_MASS_BOUNDS
-    st.query_params['min_mass'] = DEFAULT_MIN_MASS
-    st.query_params['max_mass'] = DEFAULT_MAX_MASS
+    st.query_params['min_mass'] = DEFAULT_MIN_MZ
+    st.query_params['max_mass'] = DEFAULT_MAX_MZ
     st.query_params['decimal_places'] = DEFAULT_PRECISION
     st.query_params['row_padding'] = DEFAULT_ROW_PADDING
     st.query_params['column_padding'] = DEFAULT_COLUMN_PADDING
@@ -57,24 +57,34 @@ with st.sidebar:
 
     st.subheader('Sequence', divider='grey')
 
-    c1, c2 = st.columns([7, 3])
+    peptide_sequence = stp.text_input('Peptide',
+                   value=DEFAULT_PEPTIDE,
+                   max_chars=2000,
+                   help=peptide_help_msg,
+                   url_key='peptide')
+    st.caption(
+        '''Common mods: C[Carbamidomethyl], M[Oxidation], [Acetyl]-, S[Phospho], T[Phospho], Y[Phospho]''')
+
+
+
+    c1, c2 = st.columns([2, 3])
 
     with c1:
-        peptide_sequence = stp.text_input('Peptide',
-                       value=DEFAULT_PEPTIDE,
-                       max_chars=2000,
-                       help=peptide_help_msg,
-                       url_key='peptide')
-
-    with c2:
         charge = stp.number_input('Charge',
                                  min_value=0,
                                  value=DEFAULT_CHARGE,
                                  help='Charge state of the peptide',
                                   url_key='charge')
+    with c2:
+        mass_type = stp.radio(label='Mass Type',
+                             options=['monoisotopic', 'average'],
+                             help='Mass type to use for fragment calculation',
+                             index=['monoisotopic', 'average'].index(DEFAULT_MASS_TYPE),
+                             horizontal=True,
+                                url_key='mass_type')
 
-    st.caption(
-        '''Common mods: C[Carbamidomethyl], M[Oxidation], [Acetyl]-, S[Phospho], T[Phospho], Y[Phospho]''')
+        is_monoisotopic = mass_type == 'monoisotopic'
+
 
     try:
         annotation = pt.parse(peptide_sequence)
@@ -112,40 +122,33 @@ with st.sidebar:
 
     fragment_types = [ft for ft, flag in zip('abcxyz', [a, b, c, x, y, z]) if flag]
 
-    st.subheader('Mass', divider='grey')
-
-    mass_type = stp.radio(label='Mass Type',
-                         options=['monoisotopic', 'average'],
-                         help='Mass type to use for fragment calculation',
-                         index=['monoisotopic', 'average'].index(DEFAULT_MASS_TYPE),
-                         horizontal=True,
-                            url_key='mass_type')
-
-    is_monoisotopic = mass_type == 'monoisotopic'
+    st.subheader('Additional Options', divider='grey')
 
     use_mass_bounds = stp.checkbox('Use Mass Bounds', value=DEFAULT_USE_MASS_BOUNDS, url_key='mass_bounds')
 
-    min_mass, max_mass = None, None
+    min_mz, max_mz = None, None
     if use_mass_bounds:
         c1, c2 = st.columns(2)
         with c1:
-            min_mass = stp.number_input('Min Mass', value=DEFAULT_MIN_MASS, url_key='min_mass', step=100.0)
+            min_mz = stp.number_input('Min m/z', value=DEFAULT_MIN_MZ, url_key='min_mz', step=100.0)
         with c2:
-            max_mass = stp.number_input('Max Mass', value=DEFAULT_MAX_MASS, url_key='max_mass', step=100.0)
+            max_mz = stp.number_input('Max m/z', value=DEFAULT_MAX_MZ, url_key='max_mz', step=100.0)
 
-    st.subheader('Additional Options', divider='grey')
     with st.expander('Format Options'):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            precision = stp.number_input('Decimal Places', value=DEFAULT_PRECISION, min_value=0, max_value=10,
+        precision = stp.number_input('Decimal Places', value=DEFAULT_PRECISION, min_value=0, max_value=10,
                                          url_key='decimal_places')
-        with c2:
-            row_padding = stp.number_input('Row Padding', value=DEFAULT_ROW_PADDING, min_value=0, max_value=10,
+
+        c1, c2 = st.columns(2)
+        with c1:
+
+            row_padding = stp.number_input('Row Padding (px)', value=DEFAULT_ROW_PADDING, min_value=0, max_value=10,
                                            url_key='row_padding')
-        with c3:
-            column_padding = stp.number_input('Column Padding', value=DEFAULT_COLUMN_PADDING, min_value=0, max_value=20,
+        with c2:
+            column_padding = stp.number_input('Column Padding (px)', value=DEFAULT_COLUMN_PADDING, min_value=0, max_value=20,
                                               url_key='column_padding')
+
         show_borders = stp.checkbox('Show Borders', value=DEFAULT_SHOW_BORDERS, url_key='show_borders')
+
 
         st.subheader('Fragment Colors', divider='grey')
         c1, c2, c3 = st.columns(3)
@@ -189,7 +192,7 @@ def style_fragment_table(
     is_monoisotopic: bool,
     color_map: Optional[Dict[str, str]] = None,
     show_borders: bool = True,
-    aa_col: Optional[str] = "AA",
+    aa_col: Optional[str] = "Seq",
     pos_col: Optional[str] = "+#",
     neg_col: Optional[str] = "-#",
     caption: Optional[str] = None,
@@ -248,7 +251,7 @@ def style_fragment_table(
     forward_cols = [col for col in df.columns if 'A' == col or 'B' == col or 'C' == col]
     reverse_cols = [col for col in df.columns if 'X' == col or 'Y' == col or 'Z' == col]
 
-    df = df[forward_cols + ['AA'] + reverse_cols]
+    df = df[forward_cols + [aa_col] + reverse_cols]
 
     # Add positional columns
     if pos_col and forward_cols:
@@ -308,7 +311,7 @@ def style_fragment_table(
         styled_df.applymap(lambda val: 'background-color: #ffcccc' if val > max_mass or val < min_mass else '', subset=forward_cols + reverse_cols)
 
     if caption:
-        styled_df.set_caption(caption)
+        styled_df.set_caption(f'{caption}')
 
     # Get indices of the max values in 'C' and 'X' columns
     max_index_C = df['C'].idxmax() if 'C' in df.columns else None
@@ -341,29 +344,36 @@ frag_colors = {
     'z': z_color
 }
 
+
+mass_type_abr = 'mono' if is_monoisotopic else 'avg'
+
 style_df = style_fragment_table(
     sequence=annotation.serialize(),
     fragment_types=fragment_types,
     charge=charge,
     is_monoisotopic=is_monoisotopic,
     show_borders=show_borders,  # No outer borders
-    caption=None,
     decimal_places=precision,
     row_padding=row_padding,
     column_padding=column_padding,
-    min_mass=min_mass,
-    max_mass=max_mass,
-    color_map=frag_colors
+    min_mass=min_mz,
+    max_mass=max_mz,
+    color_map=frag_colors,
+    caption=f'<b>{annotation.serialize()}</b> ({mass_type_abr})',
 )
 
 def center_table(val):
-    st.markdown(style_df.to_html(), unsafe_allow_html=True)
+    html = style_df.to_html()
+    # Update the column headers to include the superscript charge state
+    for col in ["A", "B", "C", "X", "Y", "Z"]:
+        html = html.replace(f'{col}</th>', f'{col}<sup>+{charge}</sup></th>')
+
+    st.markdown(html, unsafe_allow_html=True)
 
 
-st.header('Peptide Fragmenter Results')
-st.markdown(f'#### {annotation.serialize()}')
-
-c1, c2, c3 = st.columns(3)
+st.subheader('Peptide Fragmenter Results')
+#st.markdown(f'**Sequence:** {annotation.serialize()}')
+#st.markdown(f'**Stripped Sequence:** {annotation.sequence}')
 
 try:
     neutral_sequence_mass = pt.mass(annotation, monoisotopic=is_monoisotopic, ion_type='p', charge=0)
@@ -377,11 +387,11 @@ except Exception as e:
     st.error(f'Error calculating peptide mass: {e}')
     st.stop()
 
-
-c1.metric(label='Neural Mass (Da)', value=f'{neutral_sequence_mass:.{precision}f}')
-c2.metric(label='Mass to Charge Ratio (mz)', value=f'{sequence_mz:.{precision}f}')
-c3.metric(label='Charge', value=charge)
-
 center_table(style_df)
+
+if use_mass_bounds:
+    st.markdown(f'**Min:** {min_mz} *m/z* | **Max:** {max_mz} *m/z*')
+
+
 
 
