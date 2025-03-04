@@ -291,7 +291,9 @@ def style_fragment_table(
             ('border', border),
         ]},
         {'selector': 'th', 'props': [
-            ('background-color', '#ffffcc'),
+            #('background-color', '#4691cf'),
+            # add line under header
+            ('border-bottom', '1px solid'),
             ('font-weight', 'bold'),
         ]},
     ]
@@ -381,7 +383,7 @@ def center_table(val):
     html = style_df.to_html()
     # Update the column headers to include the superscript charge state
     for col in ["A", "B", "C", "X", "Y", "Z"]:
-        html = html.replace(f'{col}</th>', f'{col}<sup>+{charge}</sup></th>')
+        html = html.replace(f'{col}</th>', f'{col}<sup>{charge}+</sup></th>')
 
     st.markdown(html, unsafe_allow_html=True)
 
